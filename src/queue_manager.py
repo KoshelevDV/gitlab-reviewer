@@ -45,9 +45,12 @@ class QueueManager:
         self._errors = 0
         self._job_counter = 0
         self._workers: list[asyncio.Task] = []
-        # Simple in-memory dedup: (project_id, mr_iid, diff_hash) -> True
+        # Simple in-memory dedup: (project_id, mr_iid, diff_hash) -> monotonic ts
         self._seen: dict[tuple, float] = {}
         self._dedup_ttl = 3600.0
+        # Latest-wins debounce: (project_id, mr_iid) -> latest job.id
+        # Used to supersede older queued jobs when a newer push arrives for the same MR
+        self._latest_job_id: dict[tuple[str, int], int] = {}
 
     # ------------------------------------------------------------------
     # Public API
@@ -75,6 +78,9 @@ class QueueManager:
             self._pending += 1
             _metrics.queue_enqueued_total.inc()
             _metrics.queue_pending.set(self._pending)
+            # Track latest job per MR for debounce / supersede logic
+            mr_key: tuple[str, int] = (str(job.project_id), job.mr_iid)
+            self._latest_job_id[mr_key] = job.id
             logger.info(
                 "Enqueued job #%d: project=%s MR!%d (queue depth=%d)",
                 job.id,
@@ -135,6 +141,19 @@ class QueueManager:
             _metrics.queue_pending.set(self._pending)
             _metrics.queue_active.set(self._active)
             async with self._semaphore:
+                # Drop superseded jobs silently — a newer job for this MR is pending
+                if self.is_superseded(job):
+                    logger.info(
+                        "Dropping superseded job #%d: project=%s MR!%d (newer job queued)",
+                        job.id,
+                        job.project_id,
+                        job.mr_iid,
+                    )
+                    self._active -= 1
+                    _metrics.queue_active.set(self._active)
+                    self._done += 1
+                    self._queue.task_done()
+                    continue
                 try:
                     logger.info(
                         "Worker starting job #%d: project=%s MR!%d",
@@ -158,8 +177,6 @@ class QueueManager:
                     self._queue.task_done()
 
     def _is_seen(self, key: tuple) -> bool:
-        import time
-
         ts = self._seen.get(key)
         if ts is None:
             return False
@@ -186,8 +203,24 @@ class QueueManager:
             logger.exception("Failed to load seen hashes from DB")
             return 0
 
-    def mark_seen(self, project_id: int | str, mr_iid: int, diff_hash: str) -> None:
-        import time
+    def is_already_seen(self, project_id: int | str, mr_iid: int, diff_hash: str) -> bool:
+        """Return True if this (project, MR, diff) has been reviewed recently."""
+        if not diff_hash:
+            return False
+        key = (str(project_id), mr_iid, diff_hash)
+        return self._is_seen(key)
 
+    def is_superseded(self, job: ReviewJob) -> bool:
+        """
+        Return True if a *newer* job for the same MR has been enqueued since
+        this job was created.  Used by the cooldown debounce logic — if the
+        current job is superseded, skip it silently; a fresher job will handle
+        the review when the cooldown window expires.
+        """
+        mr_key: tuple[str, int] = (str(job.project_id), job.mr_iid)
+        latest_id = self._latest_job_id.get(mr_key, job.id)
+        return job.id < latest_id
+
+    def mark_seen(self, project_id: int | str, mr_iid: int, diff_hash: str) -> None:
         key = (str(project_id), mr_iid, diff_hash)
         self._seen[key] = time.monotonic()

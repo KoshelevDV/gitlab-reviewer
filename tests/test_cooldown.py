@@ -245,3 +245,118 @@ class TestCooldownIntegration:
         records, _ = await db.list_reviews()
         latest = records[0]
         assert latest.status != "skipped"
+
+
+# ---------------------------------------------------------------------------
+# is_superseded — latest-wins debounce
+# ---------------------------------------------------------------------------
+
+
+class TestIsSuperseded:
+    async def test_first_job_is_not_superseded(self, queue):
+        job = ReviewJob(project_id="42", mr_iid=7)
+        await queue.enqueue(job)
+        assert not queue.is_superseded(job)
+
+    async def test_older_job_is_superseded_by_newer(self, queue):
+        job_a = ReviewJob(project_id="42", mr_iid=7)
+        job_b = ReviewJob(project_id="42", mr_iid=7)
+        await queue.enqueue(job_a)
+        await queue.enqueue(job_b)
+        # job_a should now be superseded (job_b is newer)
+        assert queue.is_superseded(job_a)
+        # job_b is the latest — not superseded
+        assert not queue.is_superseded(job_b)
+
+    async def test_different_mr_not_superseded(self, queue):
+        job_a = ReviewJob(project_id="42", mr_iid=7)
+        job_b = ReviewJob(project_id="42", mr_iid=8)
+        await queue.enqueue(job_a)
+        await queue.enqueue(job_b)
+        # Different MR iids — neither is superseded by the other
+        assert not queue.is_superseded(job_a)
+        assert not queue.is_superseded(job_b)
+
+    async def test_different_project_not_superseded(self, queue):
+        job_a = ReviewJob(project_id="10", mr_iid=7)
+        job_b = ReviewJob(project_id="20", mr_iid=7)
+        await queue.enqueue(job_a)
+        await queue.enqueue(job_b)
+        assert not queue.is_superseded(job_a)  # different project
+        assert not queue.is_superseded(job_b)
+
+    async def test_three_pushes_only_latest_not_superseded(self, queue):
+        jobs = [ReviewJob(project_id="99", mr_iid=1) for _ in range(3)]
+        for j in jobs:
+            await queue.enqueue(j)
+        assert queue.is_superseded(jobs[0])
+        assert queue.is_superseded(jobs[1])
+        assert not queue.is_superseded(jobs[2])
+
+
+# ---------------------------------------------------------------------------
+# Dedup check inside _do_review (diff_hash already seen)
+# ---------------------------------------------------------------------------
+
+
+class TestDiffHashDedup:
+    async def test_same_diff_skipped_after_first_review(self, db, prompt_engine, queue):
+        """
+        If the same diff_hash is re-submitted after a review, the reviewer
+        should skip it as dedup (is_already_seen).
+        """
+        from src.reviewer import Reviewer, set_database
+
+        cfg = make_cfg_with_cooldown(global_min=0)
+        import src.config as cfg_mod
+
+        cfg_mod._config = cfg
+        set_database(db)
+        reviewer = Reviewer(prompts=prompt_engine, queue=queue)
+        mr = _make_mr()
+        diff = _make_diff()
+
+        call_count = 0
+
+        async def counting_chat(**_kwargs):  # noqa: ANN002, ANN003
+            nonlocal call_count
+            call_count += 1
+            return "LGTM"
+
+        with (
+            patch("src.reviewer.get_config", return_value=cfg),
+            patch("src.reviewer._make_gitlab_client") as mock_gl,
+            patch("src.reviewer._make_llm_client") as mock_llm,
+        ):
+            gl = AsyncMock()
+            gl.get_mr = AsyncMock(return_value=mr)
+            gl.get_diffs = AsyncMock(return_value=[diff])
+            gl.get_mr_diff_refs = AsyncMock(return_value=None)
+            gl.post_mr_note = AsyncMock()
+            gl.aclose = AsyncMock()
+            mock_gl.return_value = gl
+
+            llm = AsyncMock()
+            llm.chat = counting_chat
+            llm.aclose = AsyncMock()
+            mock_llm.return_value = llm
+
+            # First review — should call LLM
+            await reviewer.review_job(ReviewJob(project_id="42", mr_iid=7))
+            first_call_count = call_count
+
+            # Second review with identical diff — should be deduped
+            await reviewer.review_job(ReviewJob(project_id="42", mr_iid=7))
+
+        assert first_call_count == 1, "First review should have called LLM once"
+        assert call_count == 1, "Second review should NOT have called LLM (deduped)"
+
+        records, _ = await db.list_reviews()
+        assert len(records) == 2
+        statuses = {r.status for r in records}
+        assert "skipped" in statuses
+        deduped = next(r for r in records if r.status == "skipped")
+        assert "dedup" in (deduped.skip_reason or "")
+
+    async def test_is_already_seen_returns_false_for_empty_hash(self, queue):
+        assert not queue.is_already_seen("42", 7, "")

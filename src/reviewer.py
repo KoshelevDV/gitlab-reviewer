@@ -16,6 +16,7 @@ Flow:
 
 from __future__ import annotations
 
+import asyncio
 import fnmatch
 import logging
 import re
@@ -126,6 +127,31 @@ def _filter_diffs(
         else:
             kept.append(diff)
     return kept, skipped
+
+
+async def _delayed_requeue(queue: QueueManager, job: ReviewJob, delay_secs: float) -> None:
+    """
+    Sleep for *delay_secs* then enqueue a fresh job for the same MR.
+
+    Used by the cooldown debounce: when the latest push is blocked by the
+    cooldown window, we schedule a retry so it gets reviewed once the window
+    expires.  If another push arrives before the timer fires, the new job
+    will supersede this retry.
+    """
+    await asyncio.sleep(delay_secs)
+    fresh = ReviewJob(
+        project_id=job.project_id,
+        mr_iid=job.mr_iid,
+        event_action="cooldown_retry",
+    )
+    enqueued = await queue.enqueue(fresh)
+    logger.debug(
+        "Delayed requeue after %.0fs: project=%s MR!%d → %s",
+        delay_secs,
+        job.project_id,
+        job.mr_iid,
+        "queued" if enqueued else "rejected",
+    )
 
 
 async def _notify(record: ReviewRecord, cfg: AppConfig) -> None:
@@ -249,24 +275,37 @@ class Reviewer:
             last_time = await _db.get_last_review_time(job.project_id, mr.iid)
             if last_time is not None:
                 now_utc = datetime.now(UTC)
-                # Ensure last_time is timezone-aware
                 if last_time.tzinfo is None:
                     last_time = last_time.replace(tzinfo=UTC)
                 elapsed_minutes = (now_utc - last_time).total_seconds() / 60
                 if elapsed_minutes < effective_cooldown:
-                    remaining = round(effective_cooldown - elapsed_minutes, 1)
-                    reason = (
-                        f"cooldown: last review {round(elapsed_minutes, 1)}m ago "
-                        f"(cooldown={effective_cooldown}m, {remaining}m remaining)"
-                    )
+                    remaining_secs = (effective_cooldown - elapsed_minutes) * 60
+                    remaining_min = round(effective_cooldown - elapsed_minutes, 1)
+                    if self._queue.is_superseded(job):
+                        # Newer push arrived — this job is stale, drop silently
+                        reason = f"cooldown: superseded by newer push ({remaining_min}m remaining)"
+                        logger.info(
+                            "Cooldown+superseded: dropping job #%d project=%s MR!%d",
+                            job.id,
+                            job.project_id,
+                            job.mr_iid,
+                        )
+                    else:
+                        # This IS the latest push — retry after cooldown expires
+                        reason = (
+                            f"cooldown: rescheduled in {remaining_min}m "
+                            f"(retrying latest push after cooldown)"
+                        )
+                        logger.info(
+                            "Cooldown: rescheduling job #%d project=%s MR!%d in %.0fs",
+                            job.id,
+                            job.project_id,
+                            job.mr_iid,
+                            remaining_secs,
+                        )
+                        asyncio.create_task(_delayed_requeue(self._queue, job, remaining_secs))
                     record.status = "skipped"
                     record.skip_reason = reason
-                    logger.info(
-                        "Skipping MR due to cooldown: project=%s MR!%d — %s",
-                        job.project_id,
-                        job.mr_iid,
-                        reason,
-                    )
                     return record
 
         # ----------------------------------------------------------------
@@ -325,6 +364,18 @@ class Reviewer:
         user_message = self._build_user_message(mr, diffs, max_diff_chars)
         diff_hash = self._prompts.fingerprint(user_message)
         record.diff_hash = diff_hash
+
+        # Dedup check: skip if this exact diff was already reviewed recently
+        if self._queue.is_already_seen(job.project_id, job.mr_iid, diff_hash):
+            record.status = "skipped"
+            record.skip_reason = "dedup: diff hash already reviewed (same code, no changes)"
+            logger.info(
+                "Dedup: skipping MR review project=%s MR!%d (diff_hash=%s seen)",
+                job.project_id,
+                job.mr_iid,
+                diff_hash[:12],
+            )
+            return record
 
         # ----------------------------------------------------------------
         # 7. LLM call
