@@ -45,6 +45,7 @@ class ModelConfig(BaseModel):
     temperature: float = 0.2
     context_size: int | None = None   # None = model default
     max_tokens: int = 4096
+    inline_comments: bool = True      # post findings as GitLab inline diff comments
 
 
 class GitLabConfig(BaseModel):

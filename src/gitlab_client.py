@@ -247,6 +247,31 @@ class GitLabClient:
             logger.warning("Auto-approve failed for project=%s MR!%d: %s", project_id, mr_iid, exc)
             return False
 
+    async def get_mr_diff_refs(
+        self,
+        project_id: int | str,
+        mr_iid: int,
+    ) -> dict[str, str] | None:
+        """
+        Return {base_sha, start_sha, head_sha} for the latest MR version.
+        Required for posting inline diff comments with positional anchors.
+        Returns None if the MR has no versions yet.
+        """
+        pid = quote(str(project_id), safe="")
+        resp = await self._client.get(
+            f"{self._base}/api/v4/projects/{pid}/merge_requests/{mr_iid}/versions",
+        )
+        resp.raise_for_status()
+        versions = resp.json()
+        if not versions:
+            return None
+        v = versions[0]  # latest version
+        return {
+            "base_sha": v.get("base_commit_sha", ""),
+            "start_sha": v.get("start_commit_sha", ""),
+            "head_sha": v.get("head_commit_sha", ""),
+        }
+
     async def post_mr_discussion(
         self,
         project_id: int | str,

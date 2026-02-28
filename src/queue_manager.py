@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from dataclasses import dataclass, field
 from typing import Callable, Coroutine
 
@@ -143,6 +144,24 @@ class QueueManager:
             del self._seen[key]
             return False
         return True
+
+    async def load_seen_from_db(self, db: "Database") -> int:  # type: ignore[name-defined]
+        """
+        Restore dedup cache from the last 7 days of DB records on startup.
+        Prevents re-reviewing the same MR diff after a service restart.
+        Returns the number of hashes loaded.
+        """
+        try:
+            rows = await db.list_diff_hashes(hours=168)
+            now = time.monotonic()
+            for project_id, mr_iid, diff_hash in rows:
+                key = (str(project_id), mr_iid, diff_hash)
+                self._seen.setdefault(key, now)
+            logger.info("Dedup cache restored: %d hashes loaded from DB", len(rows))
+            return len(rows)
+        except Exception:
+            logger.exception("Failed to load seen hashes from DB")
+            return 0
 
     def mark_seen(self, project_id: int | str, mr_iid: int, diff_hash: str) -> None:
         import time

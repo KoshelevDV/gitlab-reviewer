@@ -379,6 +379,7 @@ Browser ─────────────┤ GET /ui/                     
 | v0.2 | Web UI | Провайдеры, модели, config API | ✅ Done |
 | v0.3 | Logs+History | Live логи WS ✅, история ревью SQLite ✅ | ✅ Done |
 | v0.4 | GitLab UI | Соединение ✅, группы/проекты/ветки ✅, auto-approve ✅ | ✅ Done |
-| v0.5 | Queue | Конкурентность ✅, queue status ✅, улучшенный dedup ✅ | ✅ Done |
+| v0.5 | Queue+Inline | Конкурентность ✅, queue status ✅, dedup persistence ✅ | ✅ Done |
+| v0.5b | Inline Comments | GitLab Discussion API, parse_review_sections, fallback | ✅ Done |
 | v0.6 | Valkey | Distributed queue+cache, multi-instance | 🟢 Low/Optional |
 | v0.7 | Kafka | High-volume event streaming | 💡 Optional |

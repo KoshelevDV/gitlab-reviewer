@@ -7,13 +7,16 @@ Flow:
     2. Resolve prompt stack (per-target or global)
     3. Fetch diffs → sanitise → build user message
     4. Call LLM with sealed system prompt
-    5. Post comment (or dry-run)
-    6. Auto-approve if configured and no CRITICAL/HIGH issues
-    7. Persist ReviewRecord to SQLite
+    5. Parse response into inline annotations + summary
+    6. Post inline GitLab Discussion comments (one per annotation)
+    7. Post summary as a regular MR note
+    8. Auto-approve if configured and no CRITICAL/HIGH issues
+    9. Persist ReviewRecord to SQLite
 """
 from __future__ import annotations
 
 import logging
+import re
 
 from .config import AppConfig, ReviewTarget, get_config
 from .db import Database, ReviewRecord
@@ -30,6 +33,47 @@ _db: Database | None = None
 def set_database(db: Database) -> None:
     global _db
     _db = db
+
+
+# ---------------------------------------------------------------------------
+# Inline comment parsing
+# ---------------------------------------------------------------------------
+
+_INLINE_RE = re.compile(
+    r'<!--\s*REVIEW_INLINE\s+file="([^"]+)"\s+line="(\d+)"\s*-->'
+    r'\s*(.*?)\s*'
+    r'<!--\s*REVIEW_ENDINLINE\s*-->',
+    re.DOTALL | re.IGNORECASE,
+)
+
+
+def parse_review_sections(text: str) -> tuple[list[dict], str]:
+    """
+    Split LLM output into inline annotations and a summary text.
+
+    Returns:
+        inline_comments: [{"path": str, "line": int, "body": str}]  (up to 10)
+        summary_text: the text with REVIEW_INLINE blocks removed
+    """
+    inline_comments: list[dict] = []
+    for m in _INLINE_RE.finditer(text):
+        path = m.group(1).strip()
+        line = int(m.group(2))
+        body = m.group(3).strip()
+        if path and body:
+            inline_comments.append({"path": path, "line": line, "body": body})
+        if len(inline_comments) >= 10:
+            break
+
+    # Summary = text with all REVIEW_INLINE blocks removed
+    summary = _INLINE_RE.sub("", text).strip()
+
+    # Collapse excessive blank lines left after removal
+    summary = re.sub(r"\n{3,}", "\n\n", summary).strip()
+    if not summary:
+        summary = text  # fallback: nothing was stripped
+
+    return inline_comments, summary
 
 
 class Reviewer:
@@ -108,6 +152,11 @@ class Reviewer:
         else:
             prompt_names = cfg.prompts.system
 
+        # Inject inline_format prompt if inline comments are enabled
+        use_inline = cfg.model.inline_comments
+        if use_inline and "inline_format" not in prompt_names:
+            prompt_names = list(prompt_names) + ["inline_format"]
+
         record.prompt_names = prompt_names
         system_prompt = self._prompts.build_system_prompt(prompt_names)
 
@@ -144,15 +193,71 @@ class Reviewer:
         self._queue.mark_seen(job.project_id, job.mr_iid, diff_hash)
 
         # ----------------------------------------------------------------
-        # 8. Post comment
+        # 8. Parse inline annotations + post comments
         # ----------------------------------------------------------------
-        comment = _format_comment(review_text)
-        await gitlab.post_mr_note(job.project_id, job.mr_iid, comment)
+        if use_inline:
+            inline_comments, summary_text = parse_review_sections(review_text)
+        else:
+            inline_comments, summary_text = [], review_text
+
+        record.inline_count = len(inline_comments)
+
+        if inline_comments:
+            # Fetch diff refs needed for positional comments
+            refs = await gitlab.get_mr_diff_refs(job.project_id, job.mr_iid)
+            if refs:
+                posted_inline, failed_inline = 0, 0
+                for ann in inline_comments:
+                    position = {
+                        "position_type": "text",
+                        "base_sha": refs["base_sha"],
+                        "start_sha": refs["start_sha"],
+                        "head_sha": refs["head_sha"],
+                        "new_path": ann["path"],
+                        "old_path": ann["path"],
+                        "new_line": ann["line"],
+                    }
+                    try:
+                        await gitlab.post_mr_discussion(
+                            job.project_id, job.mr_iid,
+                            _format_inline_body(ann["body"]),
+                            position=position,
+                        )
+                        posted_inline += 1
+                    except Exception as exc:
+                        logger.warning(
+                            "Inline comment failed (%s line %d): %s",
+                            ann["path"], ann["line"], exc,
+                        )
+                        failed_inline += 1
+                        # Append failed inline to summary instead
+                        summary_text += (
+                            f"\n\n**📍 `{ann['path']}` line {ann['line']}**\n{ann['body']}"
+                        )
+                logger.info(
+                    "Inline comments: %d posted, %d failed (fell back to summary)",
+                    posted_inline, failed_inline,
+                )
+            else:
+                # No diff refs — append all inline annotations to summary
+                logger.info("No diff refs available; appending inline annotations to summary")
+                for ann in inline_comments:
+                    summary_text += (
+                        f"\n\n**📍 `{ann['path']}` line {ann['line']}**\n{ann['body']}"
+                    )
+
+        # ----------------------------------------------------------------
+        # 9. Post summary comment
+        # ----------------------------------------------------------------
+        summary_comment = _format_summary_comment(
+            summary_text, inline_count=len(inline_comments)
+        )
+        await gitlab.post_mr_note(job.project_id, job.mr_iid, summary_comment)
         record.status = "posted"
         logger.info("Review posted: project=%s MR!%d", job.project_id, job.mr_iid)
 
         # ----------------------------------------------------------------
-        # 9. Auto-approve
+        # 10. Auto-approve
         # ----------------------------------------------------------------
         if target and target.auto_approve:
             _issues = _severity_count(review_text)
@@ -189,6 +294,8 @@ class Reviewer:
         )
 
 
+# ---------------------------------------------------------------------------
+# Helpers
 # ---------------------------------------------------------------------------
 
 def _make_gitlab_client(cfg: AppConfig) -> GitLabClient:
@@ -231,12 +338,23 @@ def _combine_diffs(diffs: list[FileDiff]) -> str:
     return "\n\n".join(parts)
 
 
-def _format_comment(review_text: str) -> str:
+def _format_inline_body(body: str) -> str:
+    """Wrap an inline annotation body for GitLab discussion."""
+    return f"🤖 **gitlab-reviewer**\n\n{body}"
+
+
+def _format_summary_comment(summary_text: str, inline_count: int) -> str:
     from datetime import datetime, timezone
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    inline_note = (
+        f"*{inline_count} inline annotation(s) posted directly on the diff.*\n\n"
+        if inline_count > 0
+        else ""
+    )
     return (
         f"## 🤖 Automated Code Review\n\n"
-        f"{review_text}\n\n"
+        f"{inline_note}"
+        f"{summary_text}\n\n"
         f"---\n"
         f"*Generated by gitlab-reviewer · {ts}*"
     )

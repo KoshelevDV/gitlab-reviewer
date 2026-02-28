@@ -80,6 +80,8 @@ def create_app() -> FastAPI:
         await db.init()
         reviewer_set_db(db)
         reviews_set_db(db)
+        # Restore dedup cache from recent DB records (survives service restarts)
+        await queue.load_seen_from_db(db)
         queue.start(review_fn=reviewer.review_job)
         logger.info("Startup complete — workers running")
         yield

@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS reviews (
     status          TEXT    NOT NULL,       -- posted | skipped | error | dry_run
     skip_reason     TEXT    DEFAULT '',
     auto_approved   INTEGER DEFAULT 0,
+    inline_count    INTEGER DEFAULT 0,
     created_at      TEXT    DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );
 CREATE INDEX IF NOT EXISTS idx_reviews_project   ON reviews(project_id);
@@ -63,6 +64,7 @@ class ReviewRecord:
     review_text: str = ""
     skip_reason: str = ""
     auto_approved: bool = False
+    inline_count: int = 0          # number of inline GitLab discussion comments posted
     id: int = 0
     created_at: str = ""
 
@@ -81,8 +83,25 @@ class Database:
         self._db = await aiosqlite.connect(self._path)
         self._db.row_factory = aiosqlite.Row
         await self._db.executescript(_CREATE_REVIEWS)
+        await self._run_migrations()
         await self._db.commit()
         logger.info("Database initialised at %s", self._path)
+
+    async def _run_migrations(self) -> None:
+        """Apply additive schema migrations — safe to run on every startup."""
+        assert self._db is not None
+        _migrations = [
+            # v0.5: inline comment count column
+            "ALTER TABLE reviews ADD COLUMN inline_count INTEGER DEFAULT 0",
+        ]
+        cur = await self._db.execute("PRAGMA table_info(reviews)")
+        existing_cols = {row[1] for row in await cur.fetchall()}
+        for stmt in _migrations:
+            # Extract column name from ALTER TABLE … ADD COLUMN <name> …
+            col = stmt.split("ADD COLUMN")[1].strip().split()[0]
+            if col not in existing_cols:
+                await self._db.execute(stmt)
+                logger.info("DB migration applied: %s", stmt)
 
     async def close(self) -> None:
         if self._db:
@@ -99,20 +118,21 @@ class Database:
             """INSERT INTO reviews
                (project_id, mr_iid, mr_title, mr_url, author,
                 source_branch, target_branch, diff_hash, prompt_names,
-                review_text, status, skip_reason, auto_approved, created_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                review_text, status, skip_reason, auto_approved,
+                inline_count, created_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 str(rec.project_id), rec.mr_iid, rec.mr_title, rec.mr_url,
                 rec.author, rec.source_branch, rec.target_branch,
                 rec.diff_hash, json.dumps(rec.prompt_names),
                 rec.review_text, rec.status, rec.skip_reason,
-                int(rec.auto_approved), rec.created_at,
+                int(rec.auto_approved), rec.inline_count, rec.created_at,
             ),
         )
         await self._db.commit()
         rec.id = cursor.lastrowid or 0
-        logger.debug("Saved review id=%d project=%s MR!%d status=%s",
-                     rec.id, rec.project_id, rec.mr_iid, rec.status)
+        logger.debug("Saved review id=%d project=%s MR!%d status=%s inline=%d",
+                     rec.id, rec.project_id, rec.mr_iid, rec.status, rec.inline_count)
         return rec.id
 
     # ------------------------------------------------------------------
@@ -192,6 +212,27 @@ class Database:
 
 
 # ---------------------------------------------------------------------------
+
+    async def list_diff_hashes(self, hours: int = 168) -> list[tuple[str, int, str]]:
+        """
+        Return (project_id, mr_iid, diff_hash) for reviews created within
+        the last `hours` hours that have a non-empty diff_hash.
+        Used to restore the in-memory dedup cache on startup.
+        """
+        cutoff = datetime.utcnow() - timedelta(hours=hours)
+        async with aiosqlite.connect(self._path) as db:
+            cur = await db.execute(
+                """
+                SELECT project_id, mr_iid, diff_hash
+                FROM reviews
+                WHERE diff_hash != '' AND diff_hash IS NOT NULL
+                  AND created_at > ?
+                """,
+                (cutoff.isoformat(),),
+            )
+            rows = await cur.fetchall()
+        return [(r[0], r[1], r[2]) for r in rows]
+
 
 def _row_to_record(row: aiosqlite.Row) -> ReviewRecord:
     d = dict(row)
