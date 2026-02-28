@@ -2,186 +2,155 @@
 Core review orchestrator.
 
 Flow:
-  1. Receive MRInfo + diffs
-  2. Check whitelist / draft / file count filters
-  3. Build sanitised user message (diff + metadata — never in system prompt)
+  1. QueueManager calls review_job(job)
+  2. Fetch MR info + check filters (draft, targets, author whitelist)
+  3. Fetch diffs → build sanitised user message
   4. Call LLM with sealed system prompt
   5. Post result as GitLab MR note (or log in dry-run mode)
-  6. Cache diff fingerprint to avoid duplicate reviews
+  6. Mark diff fingerprint as seen (dedup)
 """
 from __future__ import annotations
 
 import logging
-import time
-from dataclasses import dataclass, field
 
-from .gitlab_client import FileDiff, GitLabClient, MRInfo
+from .config import AppConfig, ReviewTarget, get_config
+from .gitlab_client import GitLabClient, MRInfo, FileDiff
 from .llm_client import LLMClient
 from .prompt_engine import PromptEngine
+from .queue_manager import QueueManager, ReviewJob
 
 logger = logging.getLogger(__name__)
-
-# ---------------------------------------------------------------------------
-# Simple in-memory dedup cache  (fingerprint → timestamp)
-# ---------------------------------------------------------------------------
-_dedup_cache: dict[str, float] = {}
-
-
-def _is_duplicate(fingerprint: str, ttl: int) -> bool:
-    ts = _dedup_cache.get(fingerprint)
-    if ts is None:
-        return False
-    if time.time() - ts > ttl:
-        del _dedup_cache[fingerprint]
-        return False
-    return True
-
-
-def _mark_seen(fingerprint: str) -> None:
-    _dedup_cache[fingerprint] = time.time()
-
-
-# ---------------------------------------------------------------------------
-
-
-@dataclass
-class ReviewConfig:
-    system_prompt_names: list[str]
-    whitelist_authors: list[str]
-    whitelist_projects: list[str]
-    skip_draft: bool
-    dry_run: bool
-    max_files: int
-    max_diff_chars: int
-    dedup_ttl: int
-    temperature: float
-
-
-@dataclass
-class ReviewResult:
-    skipped: bool
-    skip_reason: str = ""
-    review_text: str = ""
-    fingerprint: str = ""
 
 
 class Reviewer:
     def __init__(
         self,
+        prompts: PromptEngine,
+        queue: QueueManager,
+    ) -> None:
+        self._prompts = prompts
+        self._queue = queue
+
+    # ------------------------------------------------------------------
+    # Called by QueueManager worker
+    # ------------------------------------------------------------------
+
+    async def review_job(self, job: ReviewJob) -> None:
+        cfg = get_config()
+        dry_run = False  # could be added to config later
+
+        gitlab = _make_gitlab_client(cfg)
+        llm = _make_llm_client(cfg)
+
+        try:
+            await self._do_review(job, cfg, gitlab, llm, dry_run)
+        finally:
+            await gitlab.aclose()
+            await llm.aclose()
+
+    async def _do_review(
+        self,
+        job: ReviewJob,
+        cfg: AppConfig,
         gitlab: GitLabClient,
         llm: LLMClient,
-        prompts: PromptEngine,
-        cfg: ReviewConfig,
+        dry_run: bool,
     ) -> None:
-        self._gitlab = gitlab
-        self._llm = llm
-        self._prompts = prompts
-        self._cfg = cfg
-
-        # Pre-assemble system prompt at startup (immutable during runtime)
-        self._system_prompt = self._prompts.build_system_prompt(
-            self._cfg.system_prompt_names
-        )
-        logger.info(
-            "System prompt sealed: %d chars from prompts: %s",
-            len(self._system_prompt),
-            self._cfg.system_prompt_names,
-        )
-
-    async def review_mr(
-        self,
-        project_id: int | str,
-        mr_iid: int,
-    ) -> ReviewResult:
         # ----------------------------------------------------------------
         # 1. Fetch MR info
         # ----------------------------------------------------------------
-        mr = await self._gitlab.get_mr(project_id, mr_iid)
+        mr = await gitlab.get_mr(job.project_id, job.mr_iid)
 
         # ----------------------------------------------------------------
-        # 2. Filters
+        # 2. Find matching review target (and its prompt overrides)
         # ----------------------------------------------------------------
-        if self._cfg.skip_draft and mr.is_draft:
-            return ReviewResult(skipped=True, skip_reason="draft MR")
-
-        if self._cfg.whitelist_authors and mr.author not in self._cfg.whitelist_authors:
-            return ReviewResult(skipped=True, skip_reason=f"author '{mr.author}' not whitelisted")
-
-        if self._cfg.whitelist_projects and str(project_id) not in self._cfg.whitelist_projects:
-            return ReviewResult(skipped=True, skip_reason=f"project '{project_id}' not whitelisted")
+        target = _find_target(cfg, str(job.project_id))
 
         # ----------------------------------------------------------------
-        # 3. Fetch diffs
+        # 3. Filters
         # ----------------------------------------------------------------
-        diffs = await self._gitlab.get_diffs(project_id, mr_iid, max_files=self._cfg.max_files)
+        if mr.is_draft:
+            skip_draft = True
+            if target:
+                skip_draft = True  # always skip drafts unless explicitly allowed
+            if skip_draft:
+                logger.info("Skipping draft MR project=%s MR!%d", job.project_id, job.mr_iid)
+                return
+
+        # ----------------------------------------------------------------
+        # 4. Resolve prompts (per-target override or global)
+        # ----------------------------------------------------------------
+        if target and target.prompts.system:
+            prompt_names = target.prompts.system
+        else:
+            prompt_names = cfg.prompts.system
+
+        system_prompt = self._prompts.build_system_prompt(prompt_names)
+
+        # ----------------------------------------------------------------
+        # 5. Fetch diffs
+        # ----------------------------------------------------------------
+        max_files = 50
+        diffs = await gitlab.get_diffs(job.project_id, job.mr_iid, max_files=max_files)
         if not diffs:
-            return ReviewResult(skipped=True, skip_reason="no diffs found")
+            logger.info("No diffs found for project=%s MR!%d, skipping", job.project_id, job.mr_iid)
+            return
 
         # ----------------------------------------------------------------
-        # 4. Build sanitised user message
+        # 6. Build sanitised user message
         # ----------------------------------------------------------------
-        user_message = self._build_user_message(mr, diffs)
-        fingerprint = self._prompts.fingerprint(user_message)
+        max_diff_chars = cfg.model.context_size or 32_000
+        user_message = self._build_user_message(mr, diffs, max_diff_chars)
+
+        # Dedup by diff hash
+        diff_hash = self._prompts.fingerprint(user_message)
+        if job.diff_hash and job.diff_hash == diff_hash:
+            # Already checked in queue, but double-check here
+            logger.info("Dedup (post-queue): project=%s MR!%d", job.project_id, job.mr_iid)
+            return
 
         # ----------------------------------------------------------------
-        # 5. Dedup check
-        # ----------------------------------------------------------------
-        if _is_duplicate(fingerprint, self._cfg.dedup_ttl):
-            return ReviewResult(
-                skipped=True,
-                skip_reason="identical diff already reviewed (dedup)",
-                fingerprint=fingerprint,
-            )
-
-        # ----------------------------------------------------------------
-        # 6. LLM review
+        # 7. LLM call
         # ----------------------------------------------------------------
         logger.info(
-            "Sending MR!%d (project=%s) to LLM — diff %d chars",
-            mr_iid,
-            project_id,
-            len(user_message),
+            "LLM review: project=%s MR!%d — %d chars diff, prompts=%s",
+            job.project_id, job.mr_iid, len(user_message), prompt_names,
         )
-        review_text = await self._llm.chat(
-            system_prompt=self._system_prompt,
+        review_text = await llm.chat(
+            system_prompt=system_prompt,
             user_message=user_message,
-            temperature=self._cfg.temperature,
+            temperature=cfg.model.temperature,
         )
 
-        _mark_seen(fingerprint)
+        self._queue.mark_seen(job.project_id, job.mr_iid, diff_hash)
 
         # ----------------------------------------------------------------
-        # 7. Post comment (or dry-run log)
+        # 8. Post comment
         # ----------------------------------------------------------------
-        comment = self._format_comment(review_text, mr)
-        if self._cfg.dry_run:
-            logger.info("[DRY RUN] Would post review:\n%s", comment)
+        comment = _format_comment(review_text)
+        if dry_run:
+            logger.info("[DRY RUN] Review for project=%s MR!%d:\n%s", job.project_id, job.mr_iid, comment)
         else:
-            await self._gitlab.post_mr_note(project_id, mr_iid, comment)
+            await gitlab.post_mr_note(job.project_id, job.mr_iid, comment)
 
-        return ReviewResult(skipped=False, review_text=review_text, fingerprint=fingerprint)
+        # ----------------------------------------------------------------
+        # 9. Auto-approve (if configured and no CRITICAL/HIGH issues)
+        # ----------------------------------------------------------------
+        if target and target.auto_approve and "CRITICAL" not in review_text and "HIGH" not in review_text:
+            logger.info("Auto-approve: project=%s MR!%d", job.project_id, job.mr_iid)
+            # GitLab approve endpoint: POST /projects/:id/merge_requests/:iid/approve
+            # Not yet implemented in gitlab_client — TODO v0.4
 
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
 
-    def _build_user_message(self, mr: MRInfo, diffs: list[FileDiff]) -> str:
-        """
-        Assemble the user-turn message.
-
-        SECURITY: all fields from GitLab (title, description, diff) pass through
-        prompt_engine.sanitize_untrusted() before inclusion. They are clearly
-        delimited so the model can identify them as data, not instructions.
-        """
-        p = self._prompts  # shorthand
-
+    def _build_user_message(self, mr: MRInfo, diffs: list[FileDiff], max_chars: int) -> str:
+        p = self._prompts
         title = p.sanitize_untrusted(mr.title, max_chars=500)
         description = p.sanitize_untrusted(mr.description, max_chars=2_000)
-
-        # Combine all diffs then sanitise as one block (prevents per-file bypass)
-        raw_diff = self._combine_diffs(diffs)
-        safe_diff = p.sanitize_untrusted(raw_diff, max_chars=self._cfg.max_diff_chars)
-
+        raw_diff = _combine_diffs(diffs)
+        safe_diff = p.sanitize_untrusted(raw_diff, max_chars=max_chars)
         return (
             "=== MERGE REQUEST METADATA ===\n"
             f"Title: {title}\n"
@@ -193,26 +162,58 @@ class Reviewer:
             "=== END OF DIFF ==="
         )
 
-    def _combine_diffs(self, diffs: list[FileDiff]) -> str:
-        parts: list[str] = []
-        for d in diffs:
-            label = d.new_path or d.old_path
-            tag = ""
-            if d.new_file:
-                tag = " [NEW FILE]"
-            elif d.deleted_file:
-                tag = " [DELETED]"
-            elif d.renamed_file:
-                tag = f" [RENAMED from {d.old_path}]"
-            parts.append(f"--- {label}{tag} ---\n{d.diff}")
-        return "\n\n".join(parts)
 
-    def _format_comment(self, review_text: str, mr: MRInfo) -> str:
-        from datetime import datetime, timezone
-        ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-        return (
-            f"## 🤖 Automated Code Review\n\n"
-            f"{review_text}\n\n"
-            f"---\n"
-            f"*Generated by gitlab-reviewer · {ts}*"
-        )
+# ---------------------------------------------------------------------------
+# Module-level helpers
+# ---------------------------------------------------------------------------
+
+def _make_gitlab_client(cfg: AppConfig) -> GitLabClient:
+    return GitLabClient(cfg.gitlab.url, cfg.gitlab_token)
+
+
+def _make_llm_client(cfg: AppConfig) -> LLMClient:
+    provider = cfg.active_provider()
+    if provider is None:
+        raise RuntimeError("No active LLM provider configured")
+    return LLMClient(
+        base_url=provider.url,
+        model=cfg.model.name,
+        timeout=300,
+        api_key=provider.api_key,
+    )
+
+
+def _find_target(cfg: AppConfig, project_id: str) -> ReviewTarget | None:
+    for t in cfg.review_targets:
+        if t.type == "all":
+            return t
+        if t.type == "project" and t.id == project_id:
+            return t
+        # group matching would require fetching project → group membership (TODO)
+    return None
+
+
+def _combine_diffs(diffs: list[FileDiff]) -> str:
+    parts: list[str] = []
+    for d in diffs:
+        label = d.new_path or d.old_path
+        tag = ""
+        if d.new_file:
+            tag = " [NEW FILE]"
+        elif d.deleted_file:
+            tag = " [DELETED]"
+        elif d.renamed_file:
+            tag = f" [RENAMED from {d.old_path}]"
+        parts.append(f"--- {label}{tag} ---\n{d.diff}")
+    return "\n\n".join(parts)
+
+
+def _format_comment(review_text: str) -> str:
+    from datetime import datetime, timezone
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    return (
+        f"## 🤖 Automated Code Review\n\n"
+        f"{review_text}\n\n"
+        f"---\n"
+        f"*Generated by gitlab-reviewer · {ts}*"
+    )

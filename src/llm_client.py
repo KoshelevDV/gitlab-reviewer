@@ -1,12 +1,80 @@
-"""LLM client — OpenAI-compatible chat completions (ollama, vllm, llama.cpp)."""
+"""LLM client — OpenAI-compatible chat completions + model discovery."""
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass, field
 from typing import AsyncIterator
 
 import httpx
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class ModelInfo:
+    id: str
+    context_length: int | None = None
+    params: dict = field(default_factory=dict)
+
+
+async def list_models(base_url: str, provider_type: str, api_key: str = "") -> list[ModelInfo]:
+    """
+    Fetch available models from a provider.
+
+    ollama:        GET /api/tags       → .models[].name
+    llamacpp:      GET /v1/models      → .data[].id
+    openai_compat: GET /v1/models      → .data[].id
+    """
+    headers = {}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+
+    async with httpx.AsyncClient(headers=headers, timeout=10) as client:
+        base = base_url.rstrip("/")
+        try:
+            if provider_type == "ollama":
+                resp = await client.get(f"{base}/api/tags")
+                resp.raise_for_status()
+                models = resp.json().get("models", [])
+                return [ModelInfo(id=m["name"]) for m in models]
+            else:
+                resp = await client.get(f"{base}/v1/models")
+                resp.raise_for_status()
+                data = resp.json().get("data", [])
+                return [ModelInfo(id=m["id"]) for m in data]
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Failed to list models from %s: %s", base_url, exc)
+            return []
+
+
+async def get_model_info(
+    base_url: str, model_name: str, provider_type: str, api_key: str = ""
+) -> ModelInfo:
+    """Get context length and params for a specific model (best-effort)."""
+    headers = {}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+
+    info = ModelInfo(id=model_name)
+    async with httpx.AsyncClient(headers=headers, timeout=10) as client:
+        base = base_url.rstrip("/")
+        try:
+            if provider_type == "ollama":
+                resp = await client.post(f"{base}/api/show", json={"name": model_name})
+                if resp.status_code == 200:
+                    d = resp.json()
+                    model_meta = d.get("model_info", {})
+                    info.context_length = (
+                        model_meta.get("llama.context_length")
+                        or model_meta.get("context_length")
+                    )
+                    info.params = {
+                        "architecture": model_meta.get("general.architecture", ""),
+                        "param_count": model_meta.get("general.parameter_count", ""),
+                    }
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Could not fetch model info for %s: %s", model_name, exc)
+    return info
 
 
 class LLMClient:
@@ -18,12 +86,15 @@ class LLMClient:
     the system prompt is sealed, untrusted content only appears in the user turn.
     """
 
-    def __init__(self, base_url: str, model: str, timeout: int = 300) -> None:
-        # ollama exposes /api/chat; also supports /v1/chat/completions in new versions.
-        # We use the OpenAI-compat endpoint so this works with vllm / llama.cpp too.
+    def __init__(
+        self, base_url: str, model: str, timeout: int = 300, api_key: str = ""
+    ) -> None:
         self._base = base_url.rstrip("/")
         self._model = model
-        self._client = httpx.AsyncClient(timeout=timeout)
+        headers = {}
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+        self._client = httpx.AsyncClient(headers=headers, timeout=timeout)
 
     async def aclose(self) -> None:
         await self._client.aclose()

@@ -1,13 +1,43 @@
-"""GitLab API client — fetch MR diffs, post review comments."""
+"""GitLab API client — fetch MR diffs, post review comments, browse resources."""
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from urllib.parse import quote
 
 import httpx
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class ConnectionInfo:
+    ok: bool
+    version: str = ""
+    username: str = ""
+    error: str = ""
+
+
+@dataclass
+class GitLabGroup:
+    id: int
+    name: str
+    full_path: str
+
+
+@dataclass
+class GitLabProject:
+    id: int
+    name: str
+    path_with_namespace: str
+    default_branch: str = "main"
+
+
+@dataclass
+class GitLabBranch:
+    name: str
+    protected: bool = False
+    default: bool = False
 
 
 @dataclass
@@ -43,6 +73,80 @@ class GitLabClient:
 
     async def aclose(self) -> None:
         await self._client.aclose()
+
+    # ------------------------------------------------------------------
+    # Connection test
+    # ------------------------------------------------------------------
+
+    async def test_connection(self) -> ConnectionInfo:
+        try:
+            ver_resp = await self._client.get(f"{self._base}/api/v4/version")
+            ver_resp.raise_for_status()
+            version = ver_resp.json().get("version", "unknown")
+
+            user_resp = await self._client.get(f"{self._base}/api/v4/user")
+            user_resp.raise_for_status()
+            username = user_resp.json().get("username", "unknown")
+
+            return ConnectionInfo(ok=True, version=version, username=username)
+        except Exception as exc:  # noqa: BLE001
+            return ConnectionInfo(ok=False, error=str(exc))
+
+    # ------------------------------------------------------------------
+    # Browse groups / projects / branches
+    # ------------------------------------------------------------------
+
+    async def list_groups(self, search: str = "", per_page: int = 50) -> list[GitLabGroup]:
+        params: dict = {"per_page": per_page, "order_by": "name", "sort": "asc"}
+        if search:
+            params["search"] = search
+        resp = await self._client.get(f"{self._base}/api/v4/groups", params=params)
+        resp.raise_for_status()
+        return [
+            GitLabGroup(id=g["id"], name=g["name"], full_path=g["full_path"])
+            for g in resp.json()
+        ]
+
+    async def list_projects(
+        self, search: str = "", per_page: int = 50
+    ) -> list[GitLabProject]:
+        params: dict = {
+            "per_page": per_page,
+            "order_by": "name",
+            "sort": "asc",
+            "membership": True,
+        }
+        if search:
+            params["search"] = search
+        resp = await self._client.get(f"{self._base}/api/v4/projects", params=params)
+        resp.raise_for_status()
+        return [
+            GitLabProject(
+                id=p["id"],
+                name=p["name"],
+                path_with_namespace=p["path_with_namespace"],
+                default_branch=p.get("default_branch") or "main",
+            )
+            for p in resp.json()
+        ]
+
+    async def list_branches(
+        self, project_id: int | str, per_page: int = 100
+    ) -> list[GitLabBranch]:
+        pid = quote(str(project_id), safe="")
+        resp = await self._client.get(
+            f"{self._base}/api/v4/projects/{pid}/repository/branches",
+            params={"per_page": per_page, "order_by": "name"},
+        )
+        resp.raise_for_status()
+        return [
+            GitLabBranch(
+                name=b["name"],
+                protected=b.get("protected", False),
+                default=b.get("default", False),
+            )
+            for b in resp.json()
+        ]
 
     # ------------------------------------------------------------------
     # MR info

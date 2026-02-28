@@ -1,0 +1,805 @@
+<!DOCTYPE html>
+<html lang="en" x-data="app()" x-init="init()">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gitlab-reviewer</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <style>
+    [x-cloak] { display: none !important; }
+    .log-line { font-family: monospace; font-size: 0.78rem; line-height: 1.5; }
+    .log-ERROR { color: #f87171; }
+    .log-WARNING { color: #fbbf24; }
+    .log-INFO { color: #a3e635; }
+    .log-DEBUG { color: #60a5fa; }
+    #log-box { background: #0d1117; height: 480px; overflow-y: auto; }
+    .tab-btn { @apply px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 transition-colors; }
+    .tab-active { @apply border-indigo-500 text-indigo-400; }
+    .tab-inactive { @apply border-transparent text-gray-400 hover:text-gray-200; }
+    .card { @apply bg-gray-800 rounded-xl p-5 border border-gray-700; }
+    .btn { @apply px-4 py-2 rounded-lg text-sm font-medium transition-colors; }
+    .btn-primary { @apply bg-indigo-600 hover:bg-indigo-500 text-white; }
+    .btn-danger  { @apply bg-red-700 hover:bg-red-600 text-white; }
+    .btn-ghost   { @apply bg-gray-700 hover:bg-gray-600 text-gray-200; }
+    .input       { @apply bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-100 w-full focus:outline-none focus:ring-2 focus:ring-indigo-500; }
+    .label       { @apply block text-xs font-medium text-gray-400 mb-1; }
+    .badge-ok    { @apply inline-block px-2 py-0.5 text-xs rounded-full bg-green-800 text-green-300; }
+    .badge-err   { @apply inline-block px-2 py-0.5 text-xs rounded-full bg-red-800 text-red-300; }
+    .badge-off   { @apply inline-block px-2 py-0.5 text-xs rounded-full bg-gray-700 text-gray-400; }
+  </style>
+</head>
+<body class="bg-gray-900 text-gray-100 min-h-screen" x-cloak>
+
+<!-- NAV -->
+<nav class="bg-gray-800 border-b border-gray-700 px-6 py-3 flex items-center gap-3">
+  <span class="text-indigo-400 font-bold text-lg">🤖 gitlab-reviewer</span>
+  <span class="text-gray-500 text-xs ml-2">local LLM code review</span>
+  <div class="ml-auto flex items-center gap-2">
+    <span class="text-xs text-gray-500">queue:</span>
+    <span class="font-mono text-xs" :class="queue.active > 0 ? 'text-yellow-400' : 'text-green-400'">
+      <span x-text="queue.pending"></span> pending /
+      <span x-text="queue.active"></span> active
+    </span>
+  </div>
+</nav>
+
+<!-- TABS -->
+<div class="border-b border-gray-700 bg-gray-850 px-6 flex gap-1 pt-2 bg-gray-800">
+  <template x-for="tab in tabs" :key="tab.id">
+    <button @click="activeTab = tab.id"
+      :class="activeTab === tab.id ? 'tab-btn tab-active' : 'tab-btn tab-inactive'"
+      x-text="tab.label">
+    </button>
+  </template>
+</div>
+
+<!-- CONTENT -->
+<main class="px-6 py-6 max-w-6xl mx-auto">
+
+  <!-- ── DASHBOARD ──────────────────────────────────────────────── -->
+  <div x-show="activeTab === 'dashboard'">
+    <h2 class="text-lg font-semibold mb-4">Dashboard</h2>
+
+    <!-- Queue stats -->
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+      <template x-for="[label, key, color] in [
+          ['Pending', 'pending', 'text-yellow-400'],
+          ['Active',  'active',  'text-indigo-400'],
+          ['Done',    'done',    'text-green-400'],
+          ['Errors',  'errors',  'text-red-400']]" :key="key">
+        <div class="card text-center">
+          <div class="text-3xl font-bold" :class="color" x-text="queue[key]"></div>
+          <div class="text-xs text-gray-400 mt-1" x-text="label"></div>
+        </div>
+      </template>
+    </div>
+
+    <!-- Active provider -->
+    <div class="card mb-4">
+      <div class="text-xs text-gray-400 mb-2 uppercase tracking-wide">Active Provider</div>
+      <template x-if="activeProvider">
+        <div class="flex items-center gap-3">
+          <span class="badge-ok">online</span>
+          <span class="font-medium" x-text="activeProvider.name"></span>
+          <span class="text-gray-400 text-xs" x-text="activeProvider.url"></span>
+          <span class="ml-auto text-xs text-gray-500" x-text="activeProvider.type"></span>
+        </div>
+      </template>
+      <template x-if="!activeProvider">
+        <span class="text-yellow-400 text-sm">⚠ No active provider configured</span>
+      </template>
+    </div>
+
+    <!-- Active model -->
+    <div class="card">
+      <div class="text-xs text-gray-400 mb-2 uppercase tracking-wide">Active Model</div>
+      <template x-if="config.model && config.model.name">
+        <div class="flex flex-wrap gap-4 text-sm">
+          <span class="font-mono text-indigo-300" x-text="config.model.name"></span>
+          <span class="text-gray-400">temp: <span class="text-gray-200" x-text="config.model.temperature"></span></span>
+          <span class="text-gray-400">ctx: <span class="text-gray-200" x-text="config.model.context_size ?? 'model default'"></span></span>
+          <span class="text-gray-400">max_tokens: <span class="text-gray-200" x-text="config.model.max_tokens"></span></span>
+        </div>
+      </template>
+      <template x-if="!config.model || !config.model.name">
+        <span class="text-yellow-400 text-sm">⚠ No model selected</span>
+      </template>
+    </div>
+  </div>
+
+  <!-- ── PROVIDERS ──────────────────────────────────────────────── -->
+  <div x-show="activeTab === 'providers'">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-lg font-semibold">LLM Providers</h2>
+      <button class="btn btn-primary" @click="showAddProvider = !showAddProvider">
+        + Add Provider
+      </button>
+    </div>
+
+    <!-- Add provider form -->
+    <div class="card mb-4" x-show="showAddProvider">
+      <h3 class="text-sm font-semibold mb-3 text-indigo-300">New Provider</h3>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div>
+          <label class="label">ID (unique)</label>
+          <input class="input" x-model="newProvider.id" placeholder="ollama-local" />
+        </div>
+        <div>
+          <label class="label">Display name</label>
+          <input class="input" x-model="newProvider.name" placeholder="Local Ollama" />
+        </div>
+        <div>
+          <label class="label">Type</label>
+          <select class="input" x-model="newProvider.type">
+            <option value="ollama">ollama</option>
+            <option value="llamacpp">llama.cpp</option>
+            <option value="openai_compat">OpenAI-compatible</option>
+          </select>
+        </div>
+        <div>
+          <label class="label">URL</label>
+          <input class="input" x-model="newProvider.url" placeholder="http://localhost:11434" />
+        </div>
+        <div>
+          <label class="label">API Key (optional)</label>
+          <input class="input" type="password" x-model="newProvider.api_key" placeholder="sk-..." />
+        </div>
+      </div>
+      <div class="flex gap-2 mt-3">
+        <button class="btn btn-primary" @click="saveProvider()">Save</button>
+        <button class="btn btn-ghost" @click="showAddProvider = false">Cancel</button>
+      </div>
+      <p class="text-red-400 text-xs mt-2" x-show="providerError" x-text="providerError"></p>
+    </div>
+
+    <!-- Provider list -->
+    <div class="space-y-3">
+      <template x-for="prov in config.providers ?? []" :key="prov.id">
+        <div class="card">
+          <div class="flex flex-wrap items-center gap-3">
+            <span :class="prov.active ? 'badge-ok' : 'badge-off'" x-text="prov.active ? 'active' : 'inactive'"></span>
+            <span class="font-medium" x-text="prov.name"></span>
+            <span class="text-xs text-gray-400 font-mono" x-text="prov.url"></span>
+            <span class="text-xs bg-gray-700 px-2 py-0.5 rounded" x-text="prov.type"></span>
+
+            <div class="ml-auto flex gap-2 flex-wrap">
+              <button class="btn btn-ghost text-xs" @click="testProvider(prov)">Test</button>
+              <button class="btn btn-ghost text-xs" @click="fetchModels(prov)">Models</button>
+              <button class="btn btn-danger text-xs" @click="deleteProvider(prov.id)">Delete</button>
+            </div>
+          </div>
+
+          <!-- Test result -->
+          <div class="mt-2 text-xs" x-show="providerTestResults[prov.id]">
+            <template x-if="providerTestResults[prov.id]?.ok">
+              <span class="text-green-400">✓ Connected — version: <span x-text="providerTestResults[prov.id]?.version"></span></span>
+            </template>
+            <template x-if="!providerTestResults[prov.id]?.ok && providerTestResults[prov.id]">
+              <span class="text-red-400">✗ <span x-text="providerTestResults[prov.id]?.error"></span></span>
+            </template>
+          </div>
+
+          <!-- Model list -->
+          <div class="mt-3" x-show="providerModels[prov.id]?.length > 0">
+            <div class="text-xs text-gray-400 mb-2">Available models — click to activate:</div>
+            <div class="flex flex-wrap gap-2">
+              <template x-for="m in providerModels[prov.id] ?? []" :key="m.id">
+                <button
+                  class="text-xs px-2 py-1 rounded border transition-colors"
+                  :class="config.model?.name === m.id && config.model?.provider_id === prov.id
+                    ? 'border-indigo-500 bg-indigo-900 text-indigo-200'
+                    : 'border-gray-600 bg-gray-700 hover:border-indigo-400 text-gray-300'"
+                  @click="selectModel(prov, m)">
+                  <span x-text="m.id"></span>
+                  <span class="text-gray-500 ml-1" x-show="m.context_length" x-text="'(' + Math.round(m.context_length/1024) + 'k ctx)'"></span>
+                </button>
+              </template>
+            </div>
+          </div>
+        </div>
+      </template>
+    </div>
+
+    <!-- Model settings (shown when model selected) -->
+    <div class="card mt-4" x-show="config.model?.name">
+      <h3 class="text-sm font-semibold mb-3 text-indigo-300">
+        Model Settings — <span x-text="config.model?.name" class="font-mono"></span>
+      </h3>
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div>
+          <label class="label">Temperature</label>
+          <input class="input" type="number" step="0.05" min="0" max="2"
+            x-model.number="config.model.temperature" />
+          <p class="text-xs text-gray-500 mt-1">Lower = more focused (0.1–0.3 for code review)</p>
+        </div>
+        <div>
+          <label class="label">Context Size (tokens)</label>
+          <input class="input" type="number" step="1024" min="1024"
+            x-model.number="config.model.context_size"
+            :placeholder="modelInfo[config.model?.name]?.context_length ?? 'model default'" />
+          <p class="text-xs text-gray-500 mt-1">Leave empty for model default</p>
+        </div>
+        <div>
+          <label class="label">Max Tokens (output)</label>
+          <input class="input" type="number" step="256" min="256"
+            x-model.number="config.model.max_tokens" />
+        </div>
+      </div>
+      <div class="mt-3">
+        <button class="btn btn-primary" @click="saveModelSettings()">Save Model Settings</button>
+        <span class="text-green-400 text-xs ml-3" x-show="modelSaved">✓ Saved</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── PROMPTS ────────────────────────────────────────────────── -->
+  <div x-show="activeTab === 'prompts'">
+    <h2 class="text-lg font-semibold mb-4">Prompt Configuration</h2>
+
+    <div class="card mb-4">
+      <div class="text-xs text-gray-400 mb-3 uppercase tracking-wide">Active Prompt Stack (in order)</div>
+      <div class="flex flex-wrap gap-2 mb-3">
+        <template x-for="(name, idx) in config.prompts?.system ?? []" :key="idx">
+          <div class="flex items-center bg-gray-700 border border-gray-600 rounded-lg px-3 py-1.5 text-sm">
+            <span class="text-gray-400 text-xs mr-2" x-text="idx + 1"></span>
+            <span x-text="name"></span>
+            <span x-show="idx === 0" class="ml-2 text-xs text-yellow-400">(required)</span>
+            <button x-show="idx > 0" class="ml-2 text-gray-500 hover:text-red-400"
+              @click="removePrompt(idx)">×</button>
+          </div>
+        </template>
+      </div>
+      <div class="flex gap-2">
+        <select class="input max-w-xs" x-model="promptToAdd">
+          <option value="">Add prompt...</option>
+          <option value="security">security</option>
+          <option value="performance">performance</option>
+          <option value="style">style</option>
+        </select>
+        <input class="input max-w-xs" x-model="promptToAdd" placeholder="or type custom name" />
+        <button class="btn btn-primary" @click="addPrompt()" :disabled="!promptToAdd">Add</button>
+      </div>
+    </div>
+
+    <div class="text-xs text-gray-400 mb-2">
+      Prompts compose with <code class="bg-gray-700 px-1 rounded">{{include: name}}</code> — place files in <code class="bg-gray-700 px-1 rounded">prompts/custom/</code> to override built-ins.
+    </div>
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <template x-for="name in ['base','code_review','security','performance','style']" :key="name">
+        <div class="card text-sm">
+          <div class="flex items-center justify-between mb-1">
+            <span class="font-mono text-indigo-300" x-text="name + '.md'"></span>
+            <span :class="(config.prompts?.system ?? []).includes(name) ? 'badge-ok' : 'badge-off'"
+              x-text="(config.prompts?.system ?? []).includes(name) ? 'active' : 'inactive'"></span>
+          </div>
+          <div class="text-xs text-gray-400" x-text="{
+            base: 'Role definition + anti-injection rules (always first)',
+            code_review: 'Review format, output structure, principles',
+            security: 'Injection, auth, crypto, secrets checks',
+            performance: 'N+1, O(n²), blocking async, indexes',
+            style: 'Naming, nesting, error handling, tests'
+          }[name]"></div>
+        </div>
+      </template>
+    </div>
+
+    <div class="mt-4">
+      <button class="btn btn-primary" @click="savePromptConfig()">Save Prompt Config</button>
+      <span class="text-green-400 text-xs ml-3" x-show="promptSaved">✓ Saved</span>
+    </div>
+  </div>
+
+  <!-- ── GITLAB ─────────────────────────────────────────────────── -->
+  <div x-show="activeTab === 'gitlab'">
+    <h2 class="text-lg font-semibold mb-4">GitLab Connection</h2>
+
+    <div class="card mb-4">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div>
+          <label class="label">GitLab URL</label>
+          <input class="input" x-model="config.gitlab.url" placeholder="https://gitlab.example.com" />
+        </div>
+        <div>
+          <label class="label">Auth type</label>
+          <select class="input" x-model="config.gitlab.auth_type">
+            <option value="token">Personal/Project Token</option>
+            <option value="basic">Username + Password</option>
+          </select>
+        </div>
+        <div x-show="config.gitlab.auth_type === 'token'">
+          <label class="label">Token (env: GLR_GITLAB_TOKEN)</label>
+          <input class="input" type="password" placeholder="Set via env var — not stored in config" disabled />
+          <p class="text-xs text-gray-500 mt-1">Set <code>GLR_GITLAB_TOKEN</code> in your .env file</p>
+        </div>
+        <div x-show="config.gitlab.auth_type === 'basic'">
+          <label class="label">Username</label>
+          <input class="input" x-model="gitlabUsername" placeholder="your-username" />
+          <label class="label mt-2">Password (env: GLR_GITLAB_PASSWORD)</label>
+          <input class="input" type="password" placeholder="Set via env var" disabled />
+        </div>
+        <div>
+          <label class="label">Webhook Secret (env: GLR_WEBHOOK_SECRET)</label>
+          <input class="input" type="password" placeholder="Set via env var — not stored in config" disabled />
+          <p class="text-xs text-gray-500 mt-1">Configure this value in GitLab webhook settings</p>
+        </div>
+        <div class="flex items-center gap-2 pt-4">
+          <input type="checkbox" id="tls-verify" x-model="config.gitlab.tls_verify" class="rounded" />
+          <label for="tls-verify" class="text-sm">Verify TLS certificate</label>
+        </div>
+      </div>
+      <div class="flex gap-2 mt-4 flex-wrap">
+        <button class="btn btn-primary" @click="saveGitLabConfig()">Save</button>
+        <button class="btn btn-ghost" @click="testGitLab()">Test Connection</button>
+      </div>
+      <div class="mt-2 text-sm" x-show="gitlabTestResult">
+        <template x-if="gitlabTestResult?.ok">
+          <span class="text-green-400">
+            ✓ Connected — GitLab <span x-text="gitlabTestResult.version"></span>
+            as <strong x-text="gitlabTestResult.username"></strong>
+          </span>
+        </template>
+        <template x-if="gitlabTestResult && !gitlabTestResult.ok">
+          <span class="text-red-400">✗ <span x-text="gitlabTestResult.error"></span></span>
+        </template>
+      </div>
+    </div>
+
+    <!-- Review Targets -->
+    <div class="flex items-center justify-between mb-3">
+      <h3 class="font-semibold">Review Targets</h3>
+      <button class="btn btn-primary text-xs" @click="showAddTarget = !showAddTarget">+ Add Target</button>
+    </div>
+
+    <div class="card mb-3" x-show="showAddTarget">
+      <h4 class="text-sm font-semibold mb-3 text-indigo-300">New Review Target</h4>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div>
+          <label class="label">Type</label>
+          <select class="input" x-model="newTarget.type">
+            <option value="all">All projects (accessible by token)</option>
+            <option value="group">Specific group</option>
+            <option value="project">Specific project</option>
+          </select>
+        </div>
+        <div x-show="newTarget.type === 'group'">
+          <label class="label">Group (search)</label>
+          <input class="input" x-model="newTarget.groupSearch" @input.debounce.400ms="searchGroups()" placeholder="group name..." />
+          <div class="mt-1 space-y-1" x-show="groups.length > 0">
+            <template x-for="g in groups" :key="g.id">
+              <button class="text-xs w-full text-left px-2 py-1 rounded hover:bg-gray-700"
+                :class="newTarget.id == g.id ? 'bg-indigo-900 text-indigo-200' : 'text-gray-300'"
+                @click="newTarget.id = String(g.id); newTarget.groupName = g.full_path">
+                <span x-text="g.full_path"></span>
+              </button>
+            </template>
+          </div>
+        </div>
+        <div x-show="newTarget.type === 'project'">
+          <label class="label">Project (search)</label>
+          <input class="input" x-model="newTarget.projectSearch" @input.debounce.400ms="searchProjects()" placeholder="project name..." />
+          <div class="mt-1 space-y-1" x-show="projects.length > 0">
+            <template x-for="p in projects" :key="p.id">
+              <button class="text-xs w-full text-left px-2 py-1 rounded hover:bg-gray-700"
+                :class="newTarget.id == p.id ? 'bg-indigo-900 text-indigo-200' : 'text-gray-300'"
+                @click="newTarget.id = String(p.id); newTarget.projectName = p.path">
+                <span x-text="p.path"></span>
+              </button>
+            </template>
+          </div>
+        </div>
+        <div>
+          <label class="label">Branch pattern (glob, comma = OR)</label>
+          <input class="input" x-model="newTarget.branchPattern" placeholder="main,develop,release/*" />
+        </div>
+        <div class="flex flex-col gap-2 pt-4">
+          <label class="flex items-center gap-2 text-sm">
+            <input type="checkbox" x-model="newTarget.protectedOnly" class="rounded" />
+            Only protected branches
+          </label>
+          <label class="flex items-center gap-2 text-sm">
+            <input type="checkbox" x-model="newTarget.autoApprove" class="rounded" />
+            Auto-approve when review passes
+          </label>
+        </div>
+      </div>
+      <div class="flex gap-2 mt-3">
+        <button class="btn btn-primary" @click="saveTarget()">Add Target</button>
+        <button class="btn btn-ghost" @click="showAddTarget = false">Cancel</button>
+      </div>
+    </div>
+
+    <div class="space-y-2">
+      <template x-for="(t, idx) in config.review_targets ?? []" :key="idx">
+        <div class="card flex flex-wrap items-center gap-3">
+          <span class="text-xs bg-gray-700 px-2 py-0.5 rounded" x-text="t.type"></span>
+          <span class="font-mono text-sm" x-text="t.id || 'all'"></span>
+          <span class="text-xs text-gray-400">branches: <span x-text="t.branches?.pattern ?? '*'"></span></span>
+          <template x-if="t.branches?.protected_only">
+            <span class="badge-ok text-xs">protected only</span>
+          </template>
+          <template x-if="t.auto_approve">
+            <span class="text-xs bg-blue-900 text-blue-300 px-2 py-0.5 rounded">auto-approve</span>
+          </template>
+          <button class="ml-auto btn btn-danger text-xs" @click="removeTarget(idx)">Remove</button>
+        </div>
+      </template>
+      <div class="text-gray-500 text-sm" x-show="!config.review_targets?.length">
+        No targets configured — all accessible MRs will be reviewed.
+      </div>
+    </div>
+  </div>
+
+  <!-- ── QUEUE ──────────────────────────────────────────────────── -->
+  <div x-show="activeTab === 'queue'">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-lg font-semibold">Queue Settings</h2>
+    </div>
+
+    <div class="card mb-4">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label class="label">Backend</label>
+          <select class="input" x-model="config.queue.backend">
+            <option value="memory">memory (single instance)</option>
+            <option value="valkey">Valkey/Redis (multi-instance)</option>
+          </select>
+        </div>
+        <div>
+          <label class="label">Max concurrent reviews</label>
+          <input class="input" type="number" min="1" max="20" x-model.number="config.queue.max_concurrent" />
+          <p class="text-xs text-gray-500 mt-1">How many LLM calls can run simultaneously</p>
+        </div>
+        <div>
+          <label class="label">Max queue size</label>
+          <input class="input" type="number" min="1" x-model.number="config.queue.max_queue_size" />
+          <p class="text-xs text-gray-500 mt-1">Drop incoming webhooks if queue exceeds this</p>
+        </div>
+        <div x-show="config.queue.backend === 'valkey'">
+          <label class="label">Valkey URL</label>
+          <input class="input" x-model="config.queue.valkey_url" placeholder="redis://localhost:6379" />
+        </div>
+      </div>
+      <div class="mt-4 flex gap-2">
+        <button class="btn btn-primary" @click="saveQueueConfig()">Save</button>
+        <button class="btn btn-danger" @click="drainQueue()">Drain Queue</button>
+        <span class="text-green-400 text-xs self-center" x-show="queueSaved">✓ Saved</span>
+      </div>
+    </div>
+
+    <!-- Live stats -->
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <template x-for="[label, key, color] in [
+          ['Pending', 'pending', 'text-yellow-400'],
+          ['Active',  'active',  'text-indigo-400'],
+          ['Done',    'done',    'text-green-400'],
+          ['Errors',  'errors',  'text-red-400']]" :key="key">
+        <div class="card text-center">
+          <div class="text-3xl font-bold" :class="color" x-text="queue[key]"></div>
+          <div class="text-xs text-gray-400 mt-1" x-text="label"></div>
+        </div>
+      </template>
+    </div>
+  </div>
+
+  <!-- ── LOGS ───────────────────────────────────────────────────── -->
+  <div x-show="activeTab === 'logs'">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-lg font-semibold">Live Logs</h2>
+      <div class="flex gap-2 items-center">
+        <select class="input max-w-[120px]" x-model="logFilter">
+          <option value="">All levels</option>
+          <option value="ERROR">ERROR</option>
+          <option value="WARNING">WARNING</option>
+          <option value="INFO">INFO</option>
+          <option value="DEBUG">DEBUG</option>
+        </select>
+        <label class="flex items-center gap-1 text-sm">
+          <input type="checkbox" x-model="logFollow" class="rounded" />
+          Follow
+        </label>
+        <button class="btn btn-ghost text-xs" @click="logLines = []">Clear</button>
+        <span class="text-xs" :class="wsConnected ? 'text-green-400' : 'text-red-400'"
+          x-text="wsConnected ? '● Live' : '○ Disconnected'"></span>
+      </div>
+    </div>
+
+    <div id="log-box" class="rounded-xl p-3" x-ref="logBox">
+      <template x-for="(line, idx) in filteredLogs" :key="idx">
+        <div class="log-line" :class="'log-' + line.level">
+          <span class="text-gray-600" x-text="line.ts?.substring(11,19)"></span>
+          <span class="font-bold ml-2 w-8 inline-block" x-text="line.level?.substring(0,1)"></span>
+          <span class="text-gray-500 ml-1" x-text="line.logger"></span>
+          <span class="ml-2" x-text="line.msg"></span>
+        </div>
+      </template>
+      <div x-show="filteredLogs.length === 0" class="text-gray-600 text-sm p-4">No log lines yet...</div>
+    </div>
+  </div>
+
+</main>
+
+<!-- Toast -->
+<div class="fixed bottom-4 right-4 z-50" x-show="toast.show" x-transition>
+  <div class="px-4 py-3 rounded-xl text-sm font-medium shadow-lg"
+    :class="toast.type === 'error' ? 'bg-red-800 text-red-100' : 'bg-green-800 text-green-100'"
+    x-text="toast.message"></div>
+</div>
+
+<script>
+function app() {
+  return {
+    // State
+    activeTab: 'dashboard',
+    tabs: [
+      { id: 'dashboard', label: '📊 Dashboard' },
+      { id: 'providers', label: '🔌 Providers' },
+      { id: 'prompts',   label: '📝 Prompts' },
+      { id: 'gitlab',    label: '🦊 GitLab' },
+      { id: 'queue',     label: '⚡ Queue' },
+      { id: 'logs',      label: '📜 Logs' },
+    ],
+
+    // Config
+    config: { providers: [], model: {}, gitlab: { auth_type: 'token', tls_verify: true }, review_targets: [], queue: { backend: 'memory', max_concurrent: 3, max_queue_size: 100 }, prompts: { system: [] } },
+    activeProvider: null,
+
+    // Provider tab
+    showAddProvider: false,
+    newProvider: { id: '', name: '', type: 'ollama', url: 'http://localhost:11434', api_key: '', active: true },
+    providerError: '',
+    providerTestResults: {},
+    providerModels: {},
+    modelInfo: {},
+    modelSaved: false,
+
+    // Prompts tab
+    promptToAdd: '',
+    promptSaved: false,
+
+    // GitLab tab
+    gitlabTestResult: null,
+    showAddTarget: false,
+    newTarget: { type: 'all', id: '', branchPattern: '*', protectedOnly: false, autoApprove: false, groupSearch: '', projectSearch: '' },
+    groups: [],
+    projects: [],
+
+    // Queue tab
+    queue: { pending: 0, active: 0, done: 0, errors: 0 },
+    queueSaved: false,
+
+    // Logs tab
+    logLines: [],
+    logFilter: '',
+    logFollow: true,
+    wsConnected: false,
+    ws: null,
+
+    // Toast
+    toast: { show: false, message: '', type: 'success' },
+
+    // ── Init ────────────────────────────────────────────────────────
+    async init() {
+      await this.loadConfig();
+      this.startQueuePolling();
+      this.connectLogSocket();
+    },
+
+    async loadConfig() {
+      try {
+        const r = await fetch('/api/v1/config');
+        this.config = await r.json();
+        this.activeProvider = (this.config.providers ?? []).find(p => p.active && p.id === this.config.model?.provider_id)
+          || (this.config.providers ?? []).find(p => p.active)
+          || null;
+      } catch (e) {
+        this.showToast('Failed to load config: ' + e, 'error');
+      }
+    },
+
+    // ── Providers ───────────────────────────────────────────────────
+    async saveProvider() {
+      this.providerError = '';
+      if (!this.newProvider.id || !this.newProvider.url) {
+        this.providerError = 'ID and URL are required'; return;
+      }
+      try {
+        const r = await fetch('/api/v1/providers', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(this.newProvider),
+        });
+        if (!r.ok) { this.providerError = (await r.json()).detail; return; }
+        await this.loadConfig();
+        this.showAddProvider = false;
+        this.newProvider = { id: '', name: '', type: 'ollama', url: 'http://localhost:11434', api_key: '', active: true };
+        this.showToast('Provider added');
+      } catch (e) { this.providerError = String(e); }
+    },
+
+    async deleteProvider(id) {
+      if (!confirm(`Delete provider "${id}"?`)) return;
+      await fetch(`/api/v1/providers/${id}`, { method: 'DELETE' });
+      await this.loadConfig();
+      this.showToast('Provider deleted');
+    },
+
+    async testProvider(prov) {
+      this.providerTestResults[prov.id] = null;
+      const r = await fetch(`/api/v1/providers/${prov.id}/test`, { method: 'POST' });
+      this.providerTestResults[prov.id] = await r.json();
+    },
+
+    async fetchModels(prov) {
+      const r = await fetch(`/api/v1/providers/${prov.id}/models`);
+      this.providerModels[prov.id] = await r.json();
+    },
+
+    async selectModel(prov, model) {
+      this.config.model = {
+        ...this.config.model,
+        provider_id: prov.id,
+        name: model.id,
+      };
+      // Fetch model info for context length hint
+      const r = await fetch(`/api/v1/providers/${prov.id}/models/${encodeURIComponent(model.id)}/info`);
+      const info = await r.json();
+      this.modelInfo[model.id] = info;
+      if (info.context_length && !this.config.model.context_size) {
+        this.config.model.context_size = null; // keep null, show hint
+      }
+    },
+
+    async saveModelSettings() {
+      await this.patchConfig({ model: this.config.model });
+      this.modelSaved = true;
+      setTimeout(() => this.modelSaved = false, 2000);
+    },
+
+    // ── Prompts ─────────────────────────────────────────────────────
+    addPrompt() {
+      if (!this.promptToAdd) return;
+      if (!this.config.prompts.system.includes(this.promptToAdd)) {
+        this.config.prompts.system.push(this.promptToAdd);
+      }
+      this.promptToAdd = '';
+    },
+
+    removePrompt(idx) {
+      if (idx === 0) return; // base is always first
+      this.config.prompts.system.splice(idx, 1);
+    },
+
+    async savePromptConfig() {
+      await this.patchConfig({ prompts: this.config.prompts });
+      this.promptSaved = true;
+      setTimeout(() => this.promptSaved = false, 2000);
+      this.showToast('Prompt config saved');
+    },
+
+    // ── GitLab ──────────────────────────────────────────────────────
+    async saveGitLabConfig() {
+      await this.patchConfig({ gitlab: this.config.gitlab });
+      this.showToast('GitLab config saved');
+    },
+
+    async testGitLab() {
+      this.gitlabTestResult = null;
+      const r = await fetch('/api/v1/gitlab/test', { method: 'POST' });
+      this.gitlabTestResult = await r.json();
+    },
+
+    async searchGroups() {
+      if (!this.newTarget.groupSearch) { this.groups = []; return; }
+      const r = await fetch(`/api/v1/gitlab/groups?search=${encodeURIComponent(this.newTarget.groupSearch)}`);
+      this.groups = await r.json();
+    },
+
+    async searchProjects() {
+      if (!this.newTarget.projectSearch) { this.projects = []; return; }
+      const r = await fetch(`/api/v1/gitlab/projects?search=${encodeURIComponent(this.newTarget.projectSearch)}`);
+      this.projects = await r.json();
+    },
+
+    async saveTarget() {
+      const target = {
+        type: this.newTarget.type,
+        id: this.newTarget.id,
+        branches: { pattern: this.newTarget.branchPattern, protected_only: this.newTarget.protectedOnly },
+        auto_approve: this.newTarget.autoApprove,
+        prompts: { system: [] },
+      };
+      if (!this.config.review_targets) this.config.review_targets = [];
+      this.config.review_targets.push(target);
+      await this.patchConfig({ review_targets: this.config.review_targets });
+      this.showAddTarget = false;
+      this.newTarget = { type: 'all', id: '', branchPattern: '*', protectedOnly: false, autoApprove: false };
+      this.showToast('Target added');
+    },
+
+    async removeTarget(idx) {
+      this.config.review_targets.splice(idx, 1);
+      await this.patchConfig({ review_targets: this.config.review_targets });
+    },
+
+    // ── Queue ───────────────────────────────────────────────────────
+    async saveQueueConfig() {
+      await this.patchConfig({ queue: this.config.queue });
+      this.queueSaved = true;
+      setTimeout(() => this.queueSaved = false, 2000);
+      this.showToast('Queue config saved');
+    },
+
+    async drainQueue() {
+      if (!confirm('Cancel all pending reviews?')) return;
+      await fetch('/api/v1/queue/drain', { method: 'POST' });
+      this.showToast('Queue drained');
+    },
+
+    startQueuePolling() {
+      setInterval(async () => {
+        try {
+          const r = await fetch('/api/v1/queue');
+          this.queue = await r.json();
+        } catch (_) {}
+      }, 2000);
+    },
+
+    // ── Logs ────────────────────────────────────────────────────────
+    get filteredLogs() {
+      if (!this.logFilter) return this.logLines;
+      return this.logLines.filter(l => l.level === this.logFilter);
+    },
+
+    connectLogSocket() {
+      const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+      const wsUrl = `${proto}://${location.host}/ws/logs`;
+      this.ws = new WebSocket(wsUrl);
+
+      this.ws.onopen = () => { this.wsConnected = true; };
+      this.ws.onclose = () => {
+        this.wsConnected = false;
+        setTimeout(() => this.connectLogSocket(), 3000);
+      };
+      this.ws.onmessage = (evt) => {
+        try {
+          const data = JSON.parse(evt.data);
+          if (data.type === 'ping') return;
+          this.logLines.push(data);
+          if (this.logLines.length > 2000) this.logLines.shift();
+          if (this.logFollow) {
+            this.$nextTick(() => {
+              const box = document.getElementById('log-box');
+              if (box) box.scrollTop = box.scrollHeight;
+            });
+          }
+        } catch (_) {}
+      };
+    },
+
+    // ── Helpers ─────────────────────────────────────────────────────
+    async patchConfig(patch) {
+      try {
+        const r = await fetch('/api/v1/config', {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(patch),
+        });
+        if (!r.ok) {
+          const err = await r.json();
+          this.showToast('Error: ' + JSON.stringify(err.detail), 'error');
+        }
+      } catch (e) {
+        this.showToast('Network error: ' + e, 'error');
+      }
+    },
+
+    showToast(message, type = 'success') {
+      this.toast = { show: true, message, type };
+      setTimeout(() => this.toast.show = false, 3000);
+    },
+  };
+}
+</script>
+
+</body>
+</html>
