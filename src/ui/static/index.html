@@ -721,6 +721,21 @@
           <label class="label">Skip Authors <span class="text-gray-500">(bots, CI)</span></label>
           <input class="input" x-model="newTargetForm.skipAuthors" placeholder="ci-bot,dependabot" />
         </div>
+        <div>
+          <label class="label">Cooldown override <span class="text-gray-500">(min, empty=global)</span></label>
+          <input class="input" type="number" min="0" x-model.number="newTargetForm.cooldownMinutes"
+            placeholder="inherit global" />
+        </div>
+        <div>
+          <label class="label">Max files override <span class="text-gray-500">(empty=global)</span></label>
+          <input class="input" type="number" min="1" x-model.number="newTargetForm.maxFiles"
+            placeholder="inherit global" />
+        </div>
+      </div>
+      <div class="mt-2">
+        <label class="label">File exclusions <span class="text-gray-500">(one per line, appended to global)</span></label>
+        <textarea class="input font-mono text-xs" rows="3" x-model="newTargetForm.fileExclude"
+          placeholder="src/generated/**&#10;*.proto"></textarea>
       </div>
       <div class="flex gap-2 pt-1">
         <button class="btn btn-primary text-sm" @click="addTarget()">Save</button>
@@ -738,6 +753,7 @@
             <th class="px-4 py-2">Branch Pattern</th>
             <th class="px-4 py-2">Options</th>
             <th class="px-4 py-2">Authors</th>
+            <th class="px-4 py-2">Rules</th>
             <th class="px-4 py-2"></th>
           </tr>
         </thead>
@@ -757,6 +773,12 @@
                 <span x-show="t.skip_authors?.length" x-text="'skip: ' + t.skip_authors.join(', ')"></span>
                 <span x-show="t.author_allowlist?.length" x-text="'only: ' + t.author_allowlist.join(', ')"></span>
                 <span x-show="!t.skip_authors?.length && !t.author_allowlist?.length" class="text-gray-600">all authors</span>
+              </td>
+              <td class="px-4 py-2 text-xs text-gray-400 space-y-0.5">
+                <div x-show="t.review_cooldown_minutes != null" x-text="'⏱ ' + t.review_cooldown_minutes + 'm cooldown'"></div>
+                <div x-show="t.max_files_per_review != null" x-text="'📄 max ' + t.max_files_per_review + ' files'"></div>
+                <div x-show="t.file_exclude?.length" x-text="'🚫 ' + t.file_exclude.length + ' excl. pattern(s)'"></div>
+                <span x-show="!t.review_cooldown_minutes && !t.max_files_per_review && !t.file_exclude?.length" class="text-gray-600">—</span>
               </td>
               <td class="px-4 py-2">
                 <button class="text-red-400 hover:text-red-300 text-xs"
@@ -999,6 +1021,7 @@ function app() {
     newTargetForm: {
       type: 'project', id: '', branchPattern: '*', protectedOnly: false,
       autoApprove: false, authorAllowlist: '', skipAuthors: '',
+      cooldownMinutes: '', fileExclude: '', maxFiles: '',
     },
 
     // GitLab tab
@@ -1335,6 +1358,11 @@ function app() {
         prompts: { system: [] },
         author_allowlist: f.authorAllowlist ? f.authorAllowlist.split(',').map(s => s.trim()).filter(Boolean) : [],
         skip_authors: f.skipAuthors ? f.skipAuthors.split(',').map(s => s.trim()).filter(Boolean) : [],
+        file_exclude: f.fileExclude ? f.fileExclude.split('\n').map(s => s.trim()).filter(Boolean) : [],
+        ...(f.cooldownMinutes !== '' && f.cooldownMinutes !== null
+          ? { review_cooldown_minutes: Number(f.cooldownMinutes) } : {}),
+        ...(f.maxFiles !== '' && f.maxFiles !== null
+          ? { max_files_per_review: Number(f.maxFiles) } : {}),
       };
       const r = await fetch('/api/v1/targets', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
@@ -1342,7 +1370,11 @@ function app() {
       if (r.ok) {
         this.showToast('Target added ✓', 'success');
         this.showAddTargetModal = false;
-        this.newTargetForm = { type: 'project', id: '', branchPattern: '*', protectedOnly: false, autoApprove: false, authorAllowlist: '', skipAuthors: '' };
+        this.newTargetForm = {
+          type: 'project', id: '', branchPattern: '*', protectedOnly: false,
+          autoApprove: false, authorAllowlist: '', skipAuthors: '',
+          cooldownMinutes: '', fileExclude: '', maxFiles: '',
+        };
         await this.loadTargets();
       } else {
         const d = await r.json();
