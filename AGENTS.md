@@ -1,71 +1,196 @@
 # AGENTS.md — gitlab-reviewer
 
 ## What is this
-Standalone Python service that auto-reviews GitLab MRs using a local LLM
-(ollama). Receives GitLab webhooks, fetches diffs, calls the LLM, posts
-a structured review comment back to the MR.
+Standalone Python FastAPI service — automated GitLab MR code review using local LLMs.
+Receives GitLab webhooks → fetches diff → sanitises input → calls local LLM → posts
+structured review comment to MR. Managed entirely through a Web UI.
 
 ## Stack
-- Python 3.11+, FastAPI, uvicorn, httpx, pydantic-settings
-- ollama (or any OpenAI-compatible endpoint) as LLM backend
-- Recommended model: `qwen2.5-coder:32b` (Q4_K_M)
+- Python 3.11+, FastAPI, uvicorn, httpx, pydantic-settings, PyYAML
+- **Web UI:** Alpine.js + HTMX (CDN, no build step), Tailwind CSS (CDN)
+- **LLM backends:** ollama, llama.cpp HTTP server, any OpenAI-compatible endpoint
+- **Recommended model:** `qwen2.5-coder:32b` (Q4_K_M, ~20GB)
+- **Storage:** SQLite via aiosqlite (review history + persistent dedup cache)
+- **Optional:** Valkey (Redis-compatible) for distributed queue + cache
+- Dockerfile multi-stage, docker-compose, Helm chart
 
-## Structure
+## Structure (current + planned)
+
 ```
 src/
-  config.py         — Settings (pydantic-settings, env vars with GLR_ prefix)
-  prompt_engine.py  — Prompt loading, {{include:}} resolution, injection sanitisation
-  gitlab_client.py  — GitLab API: get MR, get diffs, post note
-  llm_client.py     — OpenAI-compat chat completions (ollama / vllm / llama.cpp)
-  reviewer.py       — Orchestration: filter → sanitise → LLM → comment
-  webhook.py        — FastAPI routes, HMAC token check, background task dispatch
-  main.py           — App factory, wiring, uvicorn entrypoint
+  config.py           — Settings (pydantic-settings), config.yml loader + writer
+  prompt_engine.py    — Prompt loading, {{include:}} resolution, sanitize_untrusted()
+  gitlab_client.py    — GitLab API: get_mr, get_diffs, post_mr_note, list groups/projects/branches
+  llm_client.py       — OpenAI-compat chat (ollama / llama.cpp / openai_compat), model listing
+  reviewer.py         — Orchestration: filter → sanitise → LLM → comment → persist
+  webhook.py          — FastAPI routes, HMAC check, enqueue (not BackgroundTask anymore)
+  queue.py            — QueueManager: asyncio.Queue + Semaphore | Valkey backend   [PLANNED v0.5]
+  db.py               — SQLite via aiosqlite: ReviewRecord, dedup cache             [PLANNED v0.3]
+  ui/
+    router.py         — FastAPI routes for UI static files                           [PLANNED v0.2]
+    static/
+      index.html      — SPA shell (Alpine.js + HTMX)
+      components/     — navbar, cards, log viewer
+  api/
+    config.py         — /api/v1/config CRUD                                         [PLANNED v0.2]
+    providers.py      — /api/v1/providers CRUD + model listing                      [PLANNED v0.2]
+    gitlab.py         — /api/v1/gitlab test/groups/projects/branches                [PLANNED v0.4]
+    reviews.py        — /api/v1/reviews history                                     [PLANNED v0.3]
+    queue.py          — /api/v1/queue status                                        [PLANNED v0.5]
+    logs.py           — /ws/logs WebSocket live stream                              [PLANNED v0.3]
+  main.py             — App factory, DI wiring, uvicorn entrypoint
 
 prompts/
-  system/           — Built-in prompts (version-controlled)
-    base.md         — MUST BE FIRST. Role + anti-injection rules + includes code_review
-    code_review.md  — General review output format and principles
-    security.md     — Security-focused checklist
-    performance.md  — Performance checklist
-    style.md        — Style / maintainability checklist
-  custom/           — User overrides (gitignored, custom/ wins over system/)
-    example_team.md — Template for team-specific rules
+  system/             — Built-in prompts (version-controlled)
+    base.md           — MUST BE FIRST: role + anti-injection rules + includes code_review
+    code_review.md    — Output format and review principles
+    security.md       — Security checks (injection, auth, crypto, secrets)
+    performance.md    — Performance checks (N+1, O(n²), async blocking)
+    style.md          — Style / maintainability
+  custom/             — User overrides (gitignored; custom/ wins over system/)
+    example_team.md   — Template for team-specific rules
 
-config.yml          — Which prompts to load, whitelist settings
-.env                — Secrets (gitignored)
+config.yml            — Single source of truth (see schema below)
+.env                  — Secrets only (GITLAB_TOKEN, GITLAB_PASSWORD, WEBHOOK_SECRET)
+ROADMAP.md            — Phased feature plan
+```
+
+## config.yml Full Schema
+
+```yaml
+providers:
+  - id: string              # unique id
+    name: string            # display name
+    type: ollama|llamacpp|openai_compat
+    url: string             # base URL
+    api_key: ""             # optional
+    active: true
+
+model:
+  provider_id: string
+  name: string              # model name at the provider
+  temperature: 0.2
+  context_size: null        # null = model default
+  max_tokens: 4096
+
+gitlab:
+  url: https://gitlab.example.com
+  auth_type: token|basic
+  # Secrets → env GLR_GITLAB_TOKEN / GLR_GITLAB_PASSWORD only (never in file)
+  tls_verify: true
+  webhook_secret: ""        # → env GLR_WEBHOOK_SECRET
+
+review_targets:
+  - type: group|project|all
+    id: string
+    branches:
+      pattern: "main,develop"   # glob, comma = OR
+      protected_only: false
+    auto_approve: false
+    prompts:
+      system: [base, security]  # optional per-target override
+
+queue:
+  backend: memory|valkey
+  max_concurrent: 3
+  max_queue_size: 100
+  valkey_url: redis://localhost:6379
+
+cache:
+  backend: memory|valkey
+  ttl: 3600
+  valkey_url: redis://localhost:6379
+
+prompts:
+  system: [base, security]   # global default
+
+ui:
+  enabled: true
+  log_buffer_lines: 1000
+
+server:
+  host: 0.0.0.0
+  port: 8000
+  log_level: info
 ```
 
 ## Development Rules
-- All env vars prefixed with `GLR_`
-- Never string-interpolate user data (diff/title/description) into the system prompt
-- Diff and MR metadata ALWAYS go into the user message turn, not system
-- Call `prompt_engine.sanitize_untrusted()` on ALL fields coming from GitLab before use
-- `PromptEngine._system_prompt` is assembled once at startup — immutable per request
-- Webhook handler returns 200 immediately; review runs in `BackgroundTask`
-- Dedup cache is in-memory — restart clears it (acceptable)
 
-## How to run locally
+### Injection Prevention (non-negotiable)
+- System prompt assembled from files at startup — **immutable per request**
+- Diff / MR title / description / author → ALWAYS in the **user** message turn, never system
+- Call `prompt_engine.sanitize_untrusted()` on **every** field arriving from GitLab
+- `base.md` MUST be listed first in any prompt configuration
+
+### Config Management
+- `config.yml` is the single source of truth
+- Secrets (tokens, passwords) → env vars only, never written to config.yml
+- Config writes: atomic (write temp → rename) + backup previous version
+- Hot reload must not drop in-flight reviews
+
+### Queue
+- Webhook handler → `QueueManager.enqueue()` only — never run review inline
+- Dedup check before enqueue: `(project_id, mr_iid, diff_hash)` → skip if cached
+- `max_concurrent` controls the Semaphore — never spawn unbounded tasks
+
+### Web UI
+- Alpine.js + HTMX only — no npm, no build step
+- All config changes go through `/api/v1/config` (validate → write → reload)
+- Secrets are never returned by the API (masked as `****`)
+- Log viewer: WebSocket `/ws/logs`, monospace, colour-coded by level
+
+### API versioning
+- All new endpoints under `/api/v1/`
+- Webhook stays at `/webhook/gitlab` (no version prefix — GitLab-configured URL)
+
+## Provider Model Resolution
+
+```python
+# ollama
+GET /api/tags            → .models[].name
+# llama.cpp / openai_compat
+GET /v1/models           → .data[].id
+# Model info (context window)
+# ollama: GET /api/show → .model_info."llama.context_length"
+# llama.cpp: GET /v1/models/{id} or props endpoint
+```
+
+## How to run
+
 ```bash
 cp .env.example .env
-# Edit .env with your GitLab token and webhook secret
+# Fill: GLR_GITLAB_TOKEN, GLR_WEBHOOK_SECRET
 
-# Install dependencies
 pip install -e .
+python -m uvicorn src.main:create_app --factory --reload
 
-# Run
-python -m uvicorn src.main:create_app --factory --reload --port 8000
-
-# Run with docker-compose
+# Or docker
 docker compose up -d
 ```
 
+GitLab webhook:
+- URL: `http://server:8000/webhook/gitlab`
+- Secret: `GLR_WEBHOOK_SECRET`
+- Trigger: Merge request events
+
+After v0.2: open `http://server:8000/ui/` to configure everything.
+
 ## Pitfalls
-- `base.md` MUST be the first prompt in `config.yml` — it contains anti-injection instructions
-- Custom prompts in `prompts/custom/` override system ones by name — useful but watch for conflicts
-- `{{include:}}` directives are resolved at request time (no startup cache) — circular includes are detected up to depth 8
-- ollama `/v1/chat/completions` is available in ollama ≥ 0.1.24; older versions need native `/api/chat`
-- The LLM timeout (`GLR_LLM_TIMEOUT`) should be generous (300s+) for large diffs on CPU
-- `GLR_LLM_MAX_DIFF_CHARS=32000` is the safety cap — increase only if your model context supports it
+
+- `base.md` MUST be first in prompt lists — contains anti-injection instructions
+- ollama `/v1/chat/completions` requires ollama ≥ 0.1.24; older → native `/api/chat` (auto-fallback)
+- LLM timeout: 300s+ for large diffs on CPU/iGPU
+- `context_size` must fit both the system prompt AND the diff — don't set it below 8192
+- Atomic config write: write to `.config.yml.tmp` then `os.rename()` — avoids corrupt config on crash
+- Valkey dedup needs distributed lock (SETNX) to prevent double-review across instances
 
 ## Status
-Initial implementation — not yet deployed.
+
+| Phase | Version | Status |
+|-------|---------|--------|
+| MVP: webhook + LLM + prompts | v0.1 | ✅ Done |
+| Web UI: providers, models, config | v0.2 | 📋 Planned |
+| Logs WebSocket + review history | v0.3 | 📋 Planned |
+| GitLab config UI + review targets | v0.4 | 📋 Planned |
+| Queue + concurrency control | v0.5 | 📋 Planned |
+| Valkey distributed backend | v0.6 | 💡 Optional |
