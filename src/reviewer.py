@@ -81,6 +81,53 @@ def parse_review_sections(text: str) -> tuple[list[dict], str]:
     return inline_comments, summary
 
 
+def _is_file_excluded(path: str, patterns: list[str]) -> bool:
+    """
+    Return True if *path* matches any of the fnmatch *patterns*.
+
+    Supports:
+      - plain globs: ``*.lock``, ``*.min.js``
+      - directory prefix globs: ``vendor/**``, ``node_modules/**``
+        (matches any file whose path starts with the prefix)
+    """
+    for pattern in patterns:
+        # Directory glob: strip trailing /** and test prefix
+        if pattern.endswith("/**"):
+            prefix = pattern[:-3]  # remove /**
+            if path == prefix or path.startswith(prefix + "/"):
+                return True
+        elif fnmatch.fnmatch(path, pattern):
+            return True
+    return False
+
+
+def _filter_diffs(
+    diffs: list[FileDiff],
+    global_exclude: list[str],
+    target_exclude: list[str],
+) -> tuple[list[FileDiff], list[str]]:
+    """
+    Remove excluded files from *diffs*.
+
+    Returns:
+        kept:    diffs that passed all filters
+        skipped: file paths that were excluded
+    """
+    patterns = global_exclude + target_exclude
+    if not patterns:
+        return diffs, []
+    kept: list[FileDiff] = []
+    skipped: list[str] = []
+    for diff in diffs:
+        # prefer new_path; fall back to old_path (deleted files have no new_path)
+        path = diff.new_path if diff.new_path else diff.old_path
+        if _is_file_excluded(path, patterns):
+            skipped.append(path)
+        else:
+            kept.append(diff)
+    return kept, skipped
+
+
 async def _notify(record: ReviewRecord, cfg: AppConfig) -> None:
     """Dispatch notification for completed review — fail-open."""
     try:
@@ -213,6 +260,25 @@ class Reviewer:
         if not diffs:
             record.status = "skipped"
             record.skip_reason = "no diffs found"
+            return record
+
+        # ----------------------------------------------------------------
+        # 5a. File filtering — remove excluded paths before LLM call
+        # ----------------------------------------------------------------
+        target_file_exclude = target.file_exclude if target else []
+        diffs, excluded_paths = _filter_diffs(diffs, cfg.file_exclude, target_file_exclude)
+        if excluded_paths:
+            logger.debug(
+                "File filter: excluded %d files from MR!%d: %s",
+                len(excluded_paths),
+                job.mr_iid,
+                excluded_paths[:10],
+            )
+        if not diffs:
+            record.status = "skipped"
+            record.skip_reason = (
+                f"all {len(excluded_paths)} changed file(s) matched exclusion filters"
+            )
             return record
 
         # ----------------------------------------------------------------

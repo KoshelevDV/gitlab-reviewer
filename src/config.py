@@ -76,6 +76,8 @@ class ReviewTarget(BaseModel):
     # Author filtering (empty list = no restriction)
     author_allowlist: list[str] = []  # only review MRs from these authors
     skip_authors: list[str] = []  # always skip MRs from these authors (bots, CI)
+    # File filtering (per-target; merged with global AppConfig.file_exclude)
+    file_exclude: list[str] = []  # fnmatch globs — matching files are removed from diff
 
 
 class NotificationFormat(StrEnum):
@@ -139,6 +141,23 @@ class AppConfig(BaseModel):
     cache: CacheConfig = Field(default_factory=CacheConfig)
     prompts: PromptsConfig = Field(default_factory=PromptsConfig)
     notifications: NotificationConfig = Field(default_factory=NotificationConfig)
+    # Global file exclusions applied to every review (per-target file_exclude is appended)
+    file_exclude: list[str] = Field(
+        default_factory=lambda: [
+            "*.lock",
+            "package-lock.json",
+            "yarn.lock",
+            "poetry.lock",
+            "Cargo.lock",
+            "vendor/**",
+            "node_modules/**",
+            "*.min.js",
+            "*.min.css",
+            "*.generated.*",
+            "dist/**",
+            "build/**",
+        ]
+    )
     ui: UIConfig = Field(default_factory=UIConfig)
     server: ServerConfig = Field(default_factory=ServerConfig)
 
