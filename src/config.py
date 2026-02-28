@@ -78,6 +78,25 @@ class ReviewTarget(BaseModel):
     skip_authors: list[str] = []  # always skip MRs from these authors (bots, CI)
 
 
+class NotificationFormat(StrEnum):
+    slack = "slack"
+    telegram = "telegram"
+    generic = "generic"
+
+
+class NotificationConfig(BaseModel):
+    enabled: bool = False
+    format: NotificationFormat = NotificationFormat.generic
+    webhook_url: str = ""  # Slack / generic HTTP webhook; env: GLR_NOTIFY_WEBHOOK_URL
+    # Telegram Bot API (alternative to generic webhook)
+    telegram_bot_token: str = ""  # env: GLR_TELEGRAM_BOT_TOKEN
+    telegram_chat_id: str = ""  # env: GLR_TELEGRAM_CHAT_ID
+    # Events
+    on_posted: bool = True  # notify when review posted
+    on_error: bool = False  # notify on review error
+    on_skipped: bool = False  # notify when review skipped
+
+
 class QueueConfig(BaseModel):
     backend: str = "memory"  # memory | valkey
     max_concurrent: int = 3
@@ -119,6 +138,7 @@ class AppConfig(BaseModel):
     queue: QueueConfig = Field(default_factory=QueueConfig)
     cache: CacheConfig = Field(default_factory=CacheConfig)
     prompts: PromptsConfig = Field(default_factory=PromptsConfig)
+    notifications: NotificationConfig = Field(default_factory=NotificationConfig)
     ui: UIConfig = Field(default_factory=UIConfig)
     server: ServerConfig = Field(default_factory=ServerConfig)
 
@@ -137,6 +157,15 @@ class AppConfig(BaseModel):
         ws = os.getenv("GLR_WEBHOOK_SECRET", "")
         if ws:
             self.gitlab.webhook_secret = ws
+        nwu = os.getenv("GLR_NOTIFY_WEBHOOK_URL", "")
+        if nwu:
+            self.notifications.webhook_url = nwu
+        tbt = os.getenv("GLR_TELEGRAM_BOT_TOKEN", "")
+        if tbt:
+            self.notifications.telegram_bot_token = tbt
+        tci = os.getenv("GLR_TELEGRAM_CHAT_ID", "")
+        if tci:
+            self.notifications.telegram_chat_id = tci
         return self
 
     @property

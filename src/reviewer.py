@@ -26,6 +26,7 @@ from .config import AppConfig, ReviewTarget, get_config
 from .db import Database, ReviewRecord
 from .gitlab_client import FileDiff, GitLabClient, MRInfo
 from .llm_client import LLMClient
+from .notifier import notify as _dispatch_notify
 from .prompt_engine import PromptEngine
 from .queue_manager import QueueManager, ReviewJob
 
@@ -80,6 +81,14 @@ def parse_review_sections(text: str) -> tuple[list[dict], str]:
     return inline_comments, summary
 
 
+async def _notify(record: ReviewRecord, cfg: AppConfig) -> None:
+    """Dispatch notification for completed review — fail-open."""
+    try:
+        await _dispatch_notify(record, cfg.notifications)
+    except Exception:
+        logger.warning("Notification dispatch error (non-fatal)", exc_info=True)
+
+
 class Reviewer:
     def __init__(self, prompts: PromptEngine, queue: QueueManager) -> None:
         self._prompts = prompts
@@ -120,6 +129,7 @@ class Reviewer:
                 inline_count=record.inline_count,
                 auto_approved=record.auto_approved,
             )
+            await _notify(record, cfg)
 
     async def _do_review(
         self,
