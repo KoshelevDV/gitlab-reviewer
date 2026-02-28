@@ -93,8 +93,10 @@ async def app(tmp_path, prompts_dir, db):
     from src.api.config import router as config_router
     from src.api.reviews import router as reviews_router
     from src.api.reviews import set_database
+    from src.api.reviews import set_queue_manager as reviews_set_queue
     from src.api.queue_api import router as queue_router
     from src.api.queue_api import set_queue_manager
+    from src.api.targets import router as targets_router
     from src.api.logs_api import router as logs_router
     from src.api.logs_api import set_log_buffer
     from src.api.providers import router as providers_router
@@ -111,6 +113,7 @@ async def app(tmp_path, prompts_dir, db):
     set_database(db)
     reviewer_set_db(db)
     set_queue_manager(q)
+    reviews_set_queue(q)
     wh_set_queue(q)
     set_log_buffer(log_buf)
 
@@ -118,6 +121,7 @@ async def app(tmp_path, prompts_dir, db):
     application.include_router(make_webhook_router())
     application.include_router(config_router)
     application.include_router(providers_router)
+    application.include_router(targets_router)
     application.include_router(gitlab_router)
     application.include_router(queue_router)
     application.include_router(logs_router)

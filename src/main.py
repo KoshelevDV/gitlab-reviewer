@@ -27,6 +27,8 @@ from .api.queue_api import router as queue_router
 from .api.queue_api import set_queue_manager
 from .api.reviews import router as reviews_router
 from .api.reviews import set_database as reviews_set_db
+from .api.reviews import set_queue_manager as reviews_set_queue
+from .api.targets import router as targets_router
 from .config import CONFIG_PATH, reload_config
 from .db import Database
 from .log_buffer import setup_log_buffer
@@ -80,6 +82,7 @@ def create_app() -> FastAPI:
         await db.init()
         reviewer_set_db(db)
         reviews_set_db(db)
+        reviews_set_queue(queue)
         # Restore dedup cache from recent DB records (survives service restarts)
         await queue.load_seen_from_db(db)
         queue.start(review_fn=reviewer.review_job)
@@ -110,6 +113,7 @@ def create_app() -> FastAPI:
     app.include_router(make_webhook_router())
     app.include_router(config_router)
     app.include_router(providers_router)
+    app.include_router(targets_router)
     app.include_router(gitlab_router)
     app.include_router(queue_router)
     app.include_router(logs_router)

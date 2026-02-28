@@ -528,6 +528,106 @@
     </div>
   </div>
 
+  <!-- ── TARGETS ──────────────────────────────────────────────────── -->
+  <div x-show="activeTab === 'targets'">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-lg font-semibold">Review Targets</h2>
+      <button class="btn btn-primary text-sm" @click="showAddTargetModal = !showAddTargetModal">
+        + Add Target
+      </button>
+    </div>
+
+    <!-- Add Target form -->
+    <div x-show="showAddTargetModal" class="card mb-4 space-y-3">
+      <h3 class="font-semibold text-sm">New Review Target</h3>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="label">Type</label>
+          <select class="input" x-model="newTargetForm.type">
+            <option value="all">all (every project)</option>
+            <option value="project">project</option>
+            <option value="group">group</option>
+          </select>
+        </div>
+        <div>
+          <label class="label">Project / Group ID</label>
+          <input class="input" x-model="newTargetForm.id" placeholder="42 (empty for all)" />
+        </div>
+        <div>
+          <label class="label">Branch Pattern</label>
+          <input class="input" x-model="newTargetForm.branchPattern" placeholder="main,release/*" />
+        </div>
+        <div class="flex items-center gap-4 pt-4">
+          <label class="flex items-center gap-2 text-sm">
+            <input type="checkbox" x-model="newTargetForm.protectedOnly" class="accent-indigo-500" />
+            Protected only
+          </label>
+          <label class="flex items-center gap-2 text-sm">
+            <input type="checkbox" x-model="newTargetForm.autoApprove" class="accent-green-500" />
+            Auto-approve
+          </label>
+        </div>
+        <div>
+          <label class="label">Author Allowlist <span class="text-gray-500">(comma-sep, empty=all)</span></label>
+          <input class="input" x-model="newTargetForm.authorAllowlist" placeholder="alice,bob" />
+        </div>
+        <div>
+          <label class="label">Skip Authors <span class="text-gray-500">(bots, CI)</span></label>
+          <input class="input" x-model="newTargetForm.skipAuthors" placeholder="ci-bot,dependabot" />
+        </div>
+      </div>
+      <div class="flex gap-2 pt-1">
+        <button class="btn btn-primary text-sm" @click="addTarget()">Save</button>
+        <button class="btn btn-ghost text-sm" @click="showAddTargetModal = false">Cancel</button>
+      </div>
+    </div>
+
+    <!-- Targets table -->
+    <div class="card p-0 overflow-hidden">
+      <table class="w-full text-sm">
+        <thead class="border-b border-gray-700">
+          <tr class="text-left text-xs text-gray-400">
+            <th class="px-4 py-2">Type</th>
+            <th class="px-4 py-2">ID</th>
+            <th class="px-4 py-2">Branch Pattern</th>
+            <th class="px-4 py-2">Options</th>
+            <th class="px-4 py-2">Authors</th>
+            <th class="px-4 py-2"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="t in targetsList" :key="t._key">
+            <tr class="border-b border-gray-700/50 hover:bg-gray-700/30">
+              <td class="px-4 py-2">
+                <span class="badge-ok" x-text="t.type"></span>
+              </td>
+              <td class="px-4 py-2 font-mono text-xs" x-text="t.id || '—'"></td>
+              <td class="px-4 py-2 font-mono text-xs" x-text="t.branches?.pattern || '*'"></td>
+              <td class="px-4 py-2 text-xs">
+                <span x-show="t.branches?.protected_only" class="badge-err mr-1">🔒 protected</span>
+                <span x-show="t.auto_approve" class="badge-ok">✓ auto-approve</span>
+              </td>
+              <td class="px-4 py-2 text-xs text-gray-400">
+                <span x-show="t.skip_authors?.length" x-text="'skip: ' + t.skip_authors.join(', ')"></span>
+                <span x-show="t.author_allowlist?.length" x-text="'only: ' + t.author_allowlist.join(', ')"></span>
+                <span x-show="!t.skip_authors?.length && !t.author_allowlist?.length" class="text-gray-600">all authors</span>
+              </td>
+              <td class="px-4 py-2">
+                <button class="text-red-400 hover:text-red-300 text-xs"
+                  @click="deleteTarget(t._key)">Delete</button>
+              </td>
+            </tr>
+          </template>
+          <tr x-show="targetsList.length === 0">
+            <td colspan="6" class="px-4 py-8 text-center text-gray-500 text-sm">
+              No review targets configured — all MRs will be reviewed.
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
   <!-- ── REVIEWS ──────────────────────────────────────────────────── -->
   <div x-show="activeTab === 'reviews'">
     <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
@@ -572,6 +672,7 @@
             <th class="px-4 py-2">Author</th>
             <th class="px-4 py-2">Status</th>
             <th class="px-4 py-2">Branch</th>
+            <th class="px-4 py-2 text-center">Inline</th>
             <th class="px-4 py-2"></th>
           </tr>
         </thead>
@@ -600,9 +701,18 @@
               </td>
               <td class="px-4 py-2 text-xs text-gray-400 font-mono"
                 x-text="r.source_branch + ' → ' + r.target_branch"></td>
-              <td class="px-4 py-2">
+              <td class="px-4 py-2 text-center">
+                <span x-show="r.inline_count > 0"
+                  class="text-xs px-1.5 py-0.5 rounded bg-indigo-900/60 text-indigo-300"
+                  :title="r.inline_count + ' inline annotation(s)'"
+                  x-text="'💬 ' + r.inline_count"></span>
+              </td>
+              <td class="px-4 py-2 flex gap-2">
                 <button class="text-indigo-400 hover:text-indigo-300 text-xs"
                   @click="openReview(r)">View</button>
+                <button x-show="r.status === 'error' || r.status === 'skipped'"
+                  class="text-yellow-400 hover:text-yellow-300 text-xs"
+                  @click="retryReview(r.id)" title="Re-queue this review">↺ Retry</button>
               </td>
             </tr>
           </template>
@@ -714,6 +824,7 @@ function app() {
       { id: 'prompts',   label: '📝 Prompts' },
       { id: 'gitlab',    label: '🦊 GitLab' },
       { id: 'queue',     label: '⚡ Queue' },
+      { id: 'targets',   label: '🎯 Targets' },
       { id: 'reviews',   label: '📋 Reviews' },
       { id: 'logs',      label: '📜 Logs' },
     ],
@@ -734,6 +845,14 @@ function app() {
     // Prompts tab
     promptToAdd: '',
     promptSaved: false,
+
+    // Targets tab
+    targetsList: [],
+    showAddTargetModal: false,
+    newTargetForm: {
+      type: 'project', id: '', branchPattern: '*', protectedOnly: false,
+      autoApprove: false, authorAllowlist: '', skipAuthors: '',
+    },
 
     // GitLab tab
     gitlabTestResult: null,
@@ -777,6 +896,7 @@ function app() {
       // Reload reviews when switching to the tab
       this.$watch('activeTab', (tab) => {
         if (tab === 'reviews') { this.loadReviews(); this.loadReviewStats(); }
+        if (tab === 'targets') { this.loadTargets(); }
       });
     },
 
@@ -999,6 +1119,62 @@ function app() {
         const r = await fetch('/api/v1/reviews/stats');
         this.reviewStats = await r.json();
       } catch (_) {}
+    },
+
+    async retryReview(id) {
+      try {
+        const r = await fetch(`/api/v1/reviews/${id}/retry`, { method: 'POST' });
+        if (r.ok) {
+          this.showToast('Review re-queued ↺', 'success');
+          this.loadReviews();
+        } else {
+          const d = await r.json();
+          this.showToast(d.detail || 'Retry failed', 'error');
+        }
+      } catch (e) { this.showToast('Network error: ' + e, 'error'); }
+    },
+
+    async loadTargets() {
+      try {
+        const r = await fetch('/api/v1/targets');
+        this.targetsList = await r.json();
+      } catch (e) { this.showToast('Failed to load targets: ' + e, 'error'); }
+    },
+
+    async addTarget() {
+      const f = this.newTargetForm;
+      const body = {
+        type: f.type,
+        id: f.id,
+        branches: { pattern: f.branchPattern || '*', protected_only: f.protectedOnly },
+        auto_approve: f.autoApprove,
+        prompts: { system: [] },
+        author_allowlist: f.authorAllowlist ? f.authorAllowlist.split(',').map(s => s.trim()).filter(Boolean) : [],
+        skip_authors: f.skipAuthors ? f.skipAuthors.split(',').map(s => s.trim()).filter(Boolean) : [],
+      };
+      const r = await fetch('/api/v1/targets', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+      });
+      if (r.ok) {
+        this.showToast('Target added ✓', 'success');
+        this.showAddTargetModal = false;
+        this.newTargetForm = { type: 'project', id: '', branchPattern: '*', protectedOnly: false, autoApprove: false, authorAllowlist: '', skipAuthors: '' };
+        await this.loadTargets();
+      } else {
+        const d = await r.json();
+        this.showToast(d.detail || 'Failed to add target', 'error');
+      }
+    },
+
+    async deleteTarget(key) {
+      if (!confirm(`Delete target '${key}'?`)) return;
+      const r = await fetch(`/api/v1/targets/${encodeURIComponent(key)}`, { method: 'DELETE' });
+      if (r.ok) {
+        this.showToast('Target deleted', 'success');
+        await this.loadTargets();
+      } else {
+        this.showToast('Failed to delete target', 'error');
+      }
     },
 
     async openReview(r) {
