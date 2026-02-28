@@ -155,6 +155,47 @@ GET /v1/models           → .data[].id
 # llama.cpp: GET /v1/models/{id} or props endpoint
 ```
 
+## Tests
+
+```bash
+pip install -e ".[test]"
+pytest tests/ -q               # run all tests
+pytest tests/ -v               # verbose
+pytest tests/ --cov=src --cov-report=term-missing   # with coverage
+```
+
+### Test structure
+
+```
+tests/
+  conftest.py                 — shared fixtures (isolate config, db, app, prompts_dir)
+  test_prompt_engine.py       — PromptEngine: sanitize_untrusted (18 injection cases),
+                                {{include:}} resolution, circular include, custom override
+  test_db.py                  — Database: CRUD, filters, pagination, stats, recent
+  test_queue_manager.py       — QueueManager: enqueue, dedup, concurrency, error counter
+  test_gitlab_client.py       — GitLabClient: mock httpx via respx; MR info, diffs,
+                                groups, branches, approve, post_note
+  test_llm_client.py          — LLMClient: chat (system/user turns), fallback to /api/chat,
+                                model listing (ollama/llamacpp), api_key, model info
+  test_reviewer.py            — Reviewer: draft filter, empty diffs, happy path, auto-approve
+                                (CRITICAL/HIGH blocking), error handling, db persistence
+  test_webhook.py             — Webhook: HMAC auth, event filtering, payload validation
+  test_api/
+    test_config_api.py        — /api/v1/config: read, write, secret masking, reload, schema
+    test_providers_api.py     — /api/v1/providers: CRUD, test connection, model listing
+    test_reviews_api.py       — /api/v1/reviews: list, filter, paginate, stats, recent, get by id
+```
+
+**154 tests, ~1.5s** — all pass on Python 3.11 and 3.12.
+
+### Key testing decisions
+- `respx` mocks all httpx calls (no real network in tests)
+- `aiosqlite` with temp file — real SQLite, no mocking of the DB layer
+- App fixture wires singletons directly (not via lifespan) because `ASGITransport` in httpx
+  does not trigger ASGI lifespan startup events
+- `_isolate_config` autouse fixture — each test gets its own temp `config.yml`
+- `pytest-asyncio` in `auto` mode — all async test functions work without decorators
+
 ## How to run
 
 ```bash

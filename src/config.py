@@ -161,20 +161,20 @@ def load_config(path: Path = CONFIG_PATH) -> AppConfig:
 
 def save_config(cfg: AppConfig, path: Path = CONFIG_PATH) -> None:
     """Atomic write: temp file → rename. Keeps backup of previous version."""
-    # Backup
     if path.exists():
         shutil.copy2(path, path.with_suffix(".yml.bak"))
 
     tmp = path.with_name(".config.yml.tmp")
-    data = cfg.model_dump(
-        exclude={"_gitlab_token", "_gitlab_password"},
-        exclude_none=False,
-    )
+    # mode='json' converts Enum → str, datetime → str, etc.
+    data: dict = cfg.model_dump(mode="json", exclude_none=False)
     # Never write secrets to yaml
     data.get("gitlab", {}).pop("webhook_secret", None)
+    # Strip private attrs that appear as None (pydantic v2 private fields)
+    data.pop("_gitlab_token", None)
+    data.pop("_gitlab_password", None)
 
     with tmp.open("w", encoding="utf-8") as f:
-        yaml.dump(data, f, default_flow_style=False, allow_unicode=True)
+        yaml.dump(data, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
     tmp.rename(path)
 
 

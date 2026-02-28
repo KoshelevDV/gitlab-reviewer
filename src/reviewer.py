@@ -43,23 +43,27 @@ class Reviewer:
 
     async def review_job(self, job: ReviewJob) -> None:
         cfg = get_config()
-        gitlab = _make_gitlab_client(cfg)
-        llm = _make_llm_client(cfg)
         record = ReviewRecord(
             project_id=str(job.project_id),
             mr_iid=job.mr_iid,
             status="error",
         )
+        gitlab: GitLabClient | None = None
+        llm: LLMClient | None = None
 
         try:
+            gitlab = _make_gitlab_client(cfg)
+            llm = _make_llm_client(cfg)
             record = await self._do_review(job, cfg, gitlab, llm, record)
         except Exception as exc:
             logger.exception("Review failed project=%s MR!%d", job.project_id, job.mr_iid)
             record.status = "error"
             record.skip_reason = str(exc)
         finally:
-            await gitlab.aclose()
-            await llm.aclose()
+            if gitlab is not None:
+                await gitlab.aclose()
+            if llm is not None:
+                await llm.aclose()
             if _db is not None:
                 await _db.save_review(record)
                 logger.debug("Review record saved id=%d", record.id)
