@@ -12,7 +12,7 @@ from ..config import CONFIG_PATH, AppConfig, get_config, reload_config, save_con
 router = APIRouter(prefix="/api/v1/config", tags=["config"])
 
 _MASKED = "****"
-_SECRET_FIELDS = {"webhook_secret", "api_key", "token", "password"}
+_SECRET_FIELDS = {"webhook_secret", "api_key", "token", "password", "telegram_bot_token"}
 
 
 def _mask_secrets(data: Any) -> Any:

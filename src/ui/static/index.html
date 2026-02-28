@@ -528,6 +528,115 @@
     </div>
   </div>
 
+  <!-- ── NOTIFICATIONS ───────────────────────────────────────────── -->
+  <div x-show="activeTab === 'notifications'">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-lg font-semibold">Notification Webhooks</h2>
+    </div>
+
+    <div class="card mb-4">
+      <!-- Enable toggle -->
+      <div class="flex items-center gap-3 mb-4">
+        <label class="relative inline-flex items-center cursor-pointer">
+          <input type="checkbox" class="sr-only peer" x-model="config.notifications.enabled">
+          <div class="w-11 h-6 bg-gray-600 rounded-full peer peer-checked:bg-indigo-600
+                      after:content-[''] after:absolute after:top-[2px] after:left-[2px]
+                      after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all
+                      peer-checked:after:translate-x-full"></div>
+        </label>
+        <span class="font-medium">Notifications enabled</span>
+      </div>
+
+      <div :class="config.notifications.enabled ? '' : 'opacity-40 pointer-events-none'">
+        <!-- Format selector -->
+        <div class="mb-4">
+          <label class="label">Notification format</label>
+          <select class="input" x-model="config.notifications.format">
+            <option value="generic">Generic JSON (n8n, Zapier, custom)</option>
+            <option value="slack">Slack Incoming Webhook</option>
+            <option value="telegram">Telegram Bot API</option>
+          </select>
+        </div>
+
+        <!-- Webhook URL (generic / slack) -->
+        <div class="mb-4" x-show="config.notifications.format !== 'telegram'">
+          <label class="label" x-text="config.notifications.format === 'slack' ? 'Slack Webhook URL' : 'Webhook URL'"></label>
+          <input class="input" type="url" x-model="config.notifications.webhook_url"
+            placeholder="https://hooks.slack.com/services/..." />
+          <p class="text-xs text-gray-500 mt-1">POST target for review events</p>
+        </div>
+
+        <!-- Telegram config -->
+        <div class="space-y-3 mb-4" x-show="config.notifications.format === 'telegram'">
+          <div>
+            <label class="label">Bot Token</label>
+            <input class="input" type="password" x-model="config.notifications.telegram_bot_token"
+              placeholder="123456789:ABC... (or set GLR_TELEGRAM_BOT_TOKEN)" />
+            <p class="text-xs text-gray-500 mt-1">Get from @BotFather on Telegram</p>
+          </div>
+          <div>
+            <label class="label">Chat ID</label>
+            <input class="input" x-model="config.notifications.telegram_chat_id"
+              placeholder="-100123456789 (group) or 123456 (DM)" />
+            <p class="text-xs text-gray-500 mt-1">Negative = group/channel; positive = DM</p>
+          </div>
+        </div>
+
+        <!-- Event triggers -->
+        <div class="mb-4">
+          <label class="label">Notify on</label>
+          <div class="space-y-2">
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" class="rounded" x-model="config.notifications.on_posted">
+              <span class="text-sm">✅ Review posted successfully</span>
+            </label>
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" class="rounded" x-model="config.notifications.on_error">
+              <span class="text-sm">❌ Review error</span>
+            </label>
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" class="rounded" x-model="config.notifications.on_skipped">
+              <span class="text-sm">⏭️ Review skipped (draft, filter, dedup)</span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Actions -->
+      <div class="flex flex-wrap gap-2 mt-4">
+        <button class="btn btn-primary" @click="saveNotifications()">Save</button>
+        <button class="btn"
+          x-show="config.notifications.enabled"
+          @click="testNotification()"
+          :disabled="notificationTestResult === 'testing'">
+          <span x-show="notificationTestResult !== 'testing'">🔔 Send Test</span>
+          <span x-show="notificationTestResult === 'testing'">Sending…</span>
+        </button>
+        <span class="text-green-400 text-xs self-center" x-show="notificationSaved">✓ Saved</span>
+        <span class="text-green-400 text-xs self-center" x-show="notificationTestResult === 'ok'">✓ Test sent!</span>
+        <span class="text-red-400 text-xs self-center" x-show="notificationTestResult === 'error'">✗ Test failed — check URL/token</span>
+      </div>
+    </div>
+
+    <!-- Payload preview -->
+    <div class="card mt-4">
+      <h3 class="font-semibold mb-2">Generic payload preview</h3>
+      <pre class="bg-gray-900 rounded p-3 text-xs overflow-auto text-green-300">{
+  "event": "review_complete",
+  "status": "posted",
+  "project_id": "42",
+  "mr_iid": 7,
+  "mr_title": "Fix the bug",
+  "author": "alice",
+  "source_branch": "feature/fix",
+  "target_branch": "main",
+  "inline_count": 2,
+  "auto_approved": false,
+  "review_snippet": "LGTM overall, check line 42..."
+}</pre>
+    </div>
+  </div>
+
   <!-- ── TARGETS ──────────────────────────────────────────────────── -->
   <div x-show="activeTab === 'targets'">
     <div class="flex items-center justify-between mb-4">
@@ -823,14 +932,15 @@ function app() {
       { id: 'providers', label: '🔌 Providers' },
       { id: 'prompts',   label: '📝 Prompts' },
       { id: 'gitlab',    label: '🦊 GitLab' },
-      { id: 'queue',     label: '⚡ Queue' },
-      { id: 'targets',   label: '🎯 Targets' },
+      { id: 'queue',         label: '⚡ Queue' },
+      { id: 'notifications', label: '🔔 Notifications' },
+      { id: 'targets',       label: '🎯 Targets' },
       { id: 'reviews',   label: '📋 Reviews' },
       { id: 'logs',      label: '📜 Logs' },
     ],
 
     // Config
-    config: { providers: [], model: {}, gitlab: { auth_type: 'token', tls_verify: true }, review_targets: [], queue: { backend: 'memory', max_concurrent: 3, max_queue_size: 100 }, prompts: { system: [] } },
+    config: { providers: [], model: {}, gitlab: { auth_type: 'token', tls_verify: true }, review_targets: [], queue: { backend: 'memory', max_concurrent: 3, max_queue_size: 100 }, prompts: { system: [] }, notifications: { enabled: false, format: 'generic', webhook_url: '', telegram_bot_token: '', telegram_chat_id: '', on_posted: true, on_error: false, on_skipped: false } },
     activeProvider: null,
 
     // Provider tab
@@ -864,6 +974,10 @@ function app() {
     // Queue tab
     queue: { pending: 0, active: 0, done: 0, errors: 0 },
     queueSaved: false,
+
+    // Notifications tab
+    notificationSaved: false,
+    notificationTestResult: null,
 
     // Dashboard
     dashboardRecent: [],
@@ -1042,6 +1156,25 @@ function app() {
       this.queueSaved = true;
       setTimeout(() => this.queueSaved = false, 2000);
       this.showToast('Queue config saved');
+    },
+
+    // ── Notifications ───────────────────────────────────────────────
+    async saveNotifications() {
+      await this.patchConfig({ notifications: this.config.notifications });
+      this.notificationSaved = true;
+      setTimeout(() => this.notificationSaved = false, 2500);
+      this.showToast('Notification config saved');
+    },
+
+    async testNotification() {
+      this.notificationTestResult = 'testing';
+      try {
+        const r = await fetch('/api/v1/notifications/test', { method: 'POST' });
+        this.notificationTestResult = r.ok ? 'ok' : 'error';
+      } catch (_) {
+        this.notificationTestResult = 'error';
+      }
+      setTimeout(() => this.notificationTestResult = null, 4000);
     },
 
     async drainQueue() {

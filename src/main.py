@@ -27,6 +27,7 @@ from .api.health import set_queue_manager as health_set_queue
 from .api.logs_api import router as logs_router
 from .api.logs_api import set_log_buffer
 from .api.metrics_api import router as metrics_router
+from .api.notifications_api import router as notifications_router
 from .api.providers import router as providers_router
 from .api.queue_api import router as queue_router
 from .api.queue_api import set_queue_manager
@@ -124,6 +125,7 @@ def create_app() -> FastAPI:
     app.include_router(make_webhook_router())
     app.include_router(health_router)
     app.include_router(metrics_router)
+    app.include_router(notifications_router)
     app.include_router(config_router)
     app.include_router(providers_router)
     app.include_router(targets_router)
