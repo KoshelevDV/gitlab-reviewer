@@ -78,6 +78,9 @@ class ReviewTarget(BaseModel):
     skip_authors: list[str] = []  # always skip MRs from these authors (bots, CI)
     # File filtering (per-target; merged with global AppConfig.file_exclude)
     file_exclude: list[str] = []  # fnmatch globs — matching files are removed from diff
+    # Cooldown: skip reviews within N minutes of the last review of the same MR
+    # None = inherit from AppConfig.review_cooldown_minutes; 0 = disabled per-target
+    review_cooldown_minutes: int | None = None
 
 
 class NotificationFormat(StrEnum):
@@ -141,6 +144,8 @@ class AppConfig(BaseModel):
     cache: CacheConfig = Field(default_factory=CacheConfig)
     prompts: PromptsConfig = Field(default_factory=PromptsConfig)
     notifications: NotificationConfig = Field(default_factory=NotificationConfig)
+    # Review cooldown — skip re-reviews within this window (0 = disabled)
+    review_cooldown_minutes: int = 0
     # Global file exclusions applied to every review (per-target file_exclude is appended)
     file_exclude: list[str] = Field(
         default_factory=lambda: [

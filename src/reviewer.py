@@ -19,7 +19,7 @@ from __future__ import annotations
 import fnmatch
 import logging
 import re
-from datetime import UTC
+from datetime import UTC, datetime
 
 from . import metrics as _metrics
 from .config import AppConfig, ReviewTarget, get_config
@@ -236,6 +236,38 @@ class Reviewer:
                     author_skip,
                 )
                 return record
+
+        # ----------------------------------------------------------------
+        # 3b. Cooldown check — skip re-reviews within the configured window
+        # ----------------------------------------------------------------
+        effective_cooldown = (
+            target.review_cooldown_minutes
+            if target is not None and target.review_cooldown_minutes is not None
+            else cfg.review_cooldown_minutes
+        )
+        if effective_cooldown > 0 and _db is not None:
+            last_time = await _db.get_last_review_time(job.project_id, mr.iid)
+            if last_time is not None:
+                now_utc = datetime.now(UTC)
+                # Ensure last_time is timezone-aware
+                if last_time.tzinfo is None:
+                    last_time = last_time.replace(tzinfo=UTC)
+                elapsed_minutes = (now_utc - last_time).total_seconds() / 60
+                if elapsed_minutes < effective_cooldown:
+                    remaining = round(effective_cooldown - elapsed_minutes, 1)
+                    reason = (
+                        f"cooldown: last review {round(elapsed_minutes, 1)}m ago "
+                        f"(cooldown={effective_cooldown}m, {remaining}m remaining)"
+                    )
+                    record.status = "skipped"
+                    record.skip_reason = reason
+                    logger.info(
+                        "Skipping MR due to cooldown: project=%s MR!%d — %s",
+                        job.project_id,
+                        job.mr_iid,
+                        reason,
+                    )
+                    return record
 
         # ----------------------------------------------------------------
         # 4. Resolve prompt stack

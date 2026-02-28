@@ -248,6 +248,31 @@ class Database:
             rows = await cur.fetchall()
         return [(r[0], r[1], r[2]) for r in rows]
 
+    async def get_last_review_time(self, project_id: str | int, mr_iid: int) -> datetime | None:
+        """
+        Return the UTC datetime of the most recent review for this MR,
+        or None if no previous review exists.
+
+        Used for cooldown checks: skip re-review if elapsed < cooldown window.
+        """
+        assert self._db is not None
+        async with self._db.execute(
+            """SELECT created_at FROM reviews
+               WHERE project_id = ? AND mr_iid = ?
+               ORDER BY created_at DESC LIMIT 1""",
+            (str(project_id), mr_iid),
+        ) as cur:
+            row = await cur.fetchone()
+        if row is None:
+            return None
+        raw = row[0]
+        if not raw:
+            return None
+        try:
+            return datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+
 
 def _row_to_record(row: aiosqlite.Row) -> ReviewRecord:
     d = dict(row)
