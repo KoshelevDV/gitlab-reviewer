@@ -2,32 +2,38 @@
 Core review orchestrator.
 
 Flow:
-  1. QueueManager calls review_job(job)
-  2. Fetch MR info + check filters (draft, targets, author whitelist)
-  3. Fetch diffs → build sanitised user message
-  4. Call LLM with sealed system prompt
-  5. Post result as GitLab MR note (or log in dry-run mode)
-  6. Mark diff fingerprint as seen (dedup)
+  QueueManager → review_job(job)
+    1. Fetch MR info + filters (draft, targets)
+    2. Resolve prompt stack (per-target or global)
+    3. Fetch diffs → sanitise → build user message
+    4. Call LLM with sealed system prompt
+    5. Post comment (or dry-run)
+    6. Auto-approve if configured and no CRITICAL/HIGH issues
+    7. Persist ReviewRecord to SQLite
 """
 from __future__ import annotations
 
 import logging
 
 from .config import AppConfig, ReviewTarget, get_config
-from .gitlab_client import GitLabClient, MRInfo, FileDiff
+from .db import Database, ReviewRecord
+from .gitlab_client import FileDiff, GitLabClient, MRInfo
 from .llm_client import LLMClient
 from .prompt_engine import PromptEngine
 from .queue_manager import QueueManager, ReviewJob
 
 logger = logging.getLogger(__name__)
 
+_db: Database | None = None
+
+
+def set_database(db: Database) -> None:
+    global _db
+    _db = db
+
 
 class Reviewer:
-    def __init__(
-        self,
-        prompts: PromptEngine,
-        queue: QueueManager,
-    ) -> None:
+    def __init__(self, prompts: PromptEngine, queue: QueueManager) -> None:
         self._prompts = prompts
         self._queue = queue
 
@@ -37,16 +43,26 @@ class Reviewer:
 
     async def review_job(self, job: ReviewJob) -> None:
         cfg = get_config()
-        dry_run = False  # could be added to config later
-
         gitlab = _make_gitlab_client(cfg)
         llm = _make_llm_client(cfg)
+        record = ReviewRecord(
+            project_id=str(job.project_id),
+            mr_iid=job.mr_iid,
+            status="error",
+        )
 
         try:
-            await self._do_review(job, cfg, gitlab, llm, dry_run)
+            record = await self._do_review(job, cfg, gitlab, llm, record)
+        except Exception as exc:
+            logger.exception("Review failed project=%s MR!%d", job.project_id, job.mr_iid)
+            record.status = "error"
+            record.skip_reason = str(exc)
         finally:
             await gitlab.aclose()
             await llm.aclose()
+            if _db is not None:
+                await _db.save_review(record)
+                logger.debug("Review record saved id=%d", record.id)
 
     async def _do_review(
         self,
@@ -54,15 +70,20 @@ class Reviewer:
         cfg: AppConfig,
         gitlab: GitLabClient,
         llm: LLMClient,
-        dry_run: bool,
-    ) -> None:
+        record: ReviewRecord,
+    ) -> ReviewRecord:
         # ----------------------------------------------------------------
         # 1. Fetch MR info
         # ----------------------------------------------------------------
         mr = await gitlab.get_mr(job.project_id, job.mr_iid)
+        record.mr_title = mr.title
+        record.mr_url = mr.web_url
+        record.author = mr.author
+        record.source_branch = mr.source_branch
+        record.target_branch = mr.target_branch
 
         # ----------------------------------------------------------------
-        # 2. Find matching review target (and its prompt overrides)
+        # 2. Find matching review target
         # ----------------------------------------------------------------
         target = _find_target(cfg, str(job.project_id))
 
@@ -70,50 +91,44 @@ class Reviewer:
         # 3. Filters
         # ----------------------------------------------------------------
         if mr.is_draft:
-            skip_draft = True
-            if target:
-                skip_draft = True  # always skip drafts unless explicitly allowed
-            if skip_draft:
-                logger.info("Skipping draft MR project=%s MR!%d", job.project_id, job.mr_iid)
-                return
+            record.status = "skipped"
+            record.skip_reason = "draft MR"
+            logger.info("Skipping draft MR project=%s MR!%d", job.project_id, job.mr_iid)
+            return record
 
         # ----------------------------------------------------------------
-        # 4. Resolve prompts (per-target override or global)
+        # 4. Resolve prompt stack
         # ----------------------------------------------------------------
         if target and target.prompts.system:
             prompt_names = target.prompts.system
         else:
             prompt_names = cfg.prompts.system
 
+        record.prompt_names = prompt_names
         system_prompt = self._prompts.build_system_prompt(prompt_names)
 
         # ----------------------------------------------------------------
         # 5. Fetch diffs
         # ----------------------------------------------------------------
-        max_files = 50
-        diffs = await gitlab.get_diffs(job.project_id, job.mr_iid, max_files=max_files)
+        diffs = await gitlab.get_diffs(job.project_id, job.mr_iid, max_files=50)
         if not diffs:
-            logger.info("No diffs found for project=%s MR!%d, skipping", job.project_id, job.mr_iid)
-            return
+            record.status = "skipped"
+            record.skip_reason = "no diffs found"
+            return record
 
         # ----------------------------------------------------------------
-        # 6. Build sanitised user message
+        # 6. Build sanitised user message + dedup
         # ----------------------------------------------------------------
         max_diff_chars = cfg.model.context_size or 32_000
         user_message = self._build_user_message(mr, diffs, max_diff_chars)
-
-        # Dedup by diff hash
         diff_hash = self._prompts.fingerprint(user_message)
-        if job.diff_hash and job.diff_hash == diff_hash:
-            # Already checked in queue, but double-check here
-            logger.info("Dedup (post-queue): project=%s MR!%d", job.project_id, job.mr_iid)
-            return
+        record.diff_hash = diff_hash
 
         # ----------------------------------------------------------------
         # 7. LLM call
         # ----------------------------------------------------------------
         logger.info(
-            "LLM review: project=%s MR!%d — %d chars diff, prompts=%s",
+            "LLM review: project=%s MR!%d — %d chars, prompts=%s",
             job.project_id, job.mr_iid, len(user_message), prompt_names,
         )
         review_text = await llm.chat(
@@ -121,28 +136,35 @@ class Reviewer:
             user_message=user_message,
             temperature=cfg.model.temperature,
         )
-
+        record.review_text = review_text
         self._queue.mark_seen(job.project_id, job.mr_iid, diff_hash)
 
         # ----------------------------------------------------------------
         # 8. Post comment
         # ----------------------------------------------------------------
         comment = _format_comment(review_text)
-        if dry_run:
-            logger.info("[DRY RUN] Review for project=%s MR!%d:\n%s", job.project_id, job.mr_iid, comment)
-        else:
-            await gitlab.post_mr_note(job.project_id, job.mr_iid, comment)
+        await gitlab.post_mr_note(job.project_id, job.mr_iid, comment)
+        record.status = "posted"
+        logger.info("Review posted: project=%s MR!%d", job.project_id, job.mr_iid)
 
         # ----------------------------------------------------------------
-        # 9. Auto-approve (if configured and no CRITICAL/HIGH issues)
+        # 9. Auto-approve
         # ----------------------------------------------------------------
-        if target and target.auto_approve and "CRITICAL" not in review_text and "HIGH" not in review_text:
-            logger.info("Auto-approve: project=%s MR!%d", job.project_id, job.mr_iid)
-            # GitLab approve endpoint: POST /projects/:id/merge_requests/:iid/approve
-            # Not yet implemented in gitlab_client — TODO v0.4
+        if target and target.auto_approve:
+            _issues = _severity_count(review_text)
+            if _issues["critical"] == 0 and _issues["high"] == 0:
+                approved = await gitlab.approve_mr(job.project_id, job.mr_iid)
+                record.auto_approved = approved
+                if approved:
+                    logger.info("Auto-approved: project=%s MR!%d", job.project_id, job.mr_iid)
+            else:
+                logger.info(
+                    "Auto-approve skipped (critical=%d high=%d): project=%s MR!%d",
+                    _issues["critical"], _issues["high"], job.project_id, job.mr_iid,
+                )
 
-    # ------------------------------------------------------------------
-    # Helpers
+        return record
+
     # ------------------------------------------------------------------
 
     def _build_user_message(self, mr: MRInfo, diffs: list[FileDiff], max_chars: int) -> str:
@@ -163,8 +185,6 @@ class Reviewer:
         )
 
 
-# ---------------------------------------------------------------------------
-# Module-level helpers
 # ---------------------------------------------------------------------------
 
 def _make_gitlab_client(cfg: AppConfig) -> GitLabClient:
@@ -189,7 +209,6 @@ def _find_target(cfg: AppConfig, project_id: str) -> ReviewTarget | None:
             return t
         if t.type == "project" and t.id == project_id:
             return t
-        # group matching would require fetching project → group membership (TODO)
     return None
 
 
@@ -217,3 +236,12 @@ def _format_comment(review_text: str) -> str:
         f"---\n"
         f"*Generated by gitlab-reviewer · {ts}*"
     )
+
+
+def _severity_count(review_text: str) -> dict[str, int]:
+    """Count CRITICAL and HIGH severity markers in review text."""
+    text_upper = review_text.upper()
+    return {
+        "critical": text_upper.count("[CRITICAL]"),
+        "high": text_upper.count("[HIGH]"),
+    }

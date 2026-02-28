@@ -24,8 +24,8 @@ src/
   llm_client.py       — OpenAI-compat chat (ollama / llama.cpp / openai_compat), model listing
   reviewer.py         — Orchestration: filter → sanitise → LLM → comment → persist
   webhook.py          — FastAPI routes, HMAC check, enqueue (not BackgroundTask anymore)
-  queue.py            — QueueManager: asyncio.Queue + Semaphore | Valkey backend   [PLANNED v0.5]
-  db.py               — SQLite via aiosqlite: ReviewRecord, dedup cache             [PLANNED v0.3]
+  queue_manager.py    — QueueManager: asyncio.Queue + Semaphore, dedup, stats
+  db.py               — SQLite via aiosqlite: ReviewRecord, CRUD, stats, recent
   ui/
     router.py         — FastAPI routes for UI static files                           [PLANNED v0.2]
     static/
@@ -35,9 +35,9 @@ src/
     config.py         — /api/v1/config CRUD                                         [PLANNED v0.2]
     providers.py      — /api/v1/providers CRUD + model listing                      [PLANNED v0.2]
     gitlab.py         — /api/v1/gitlab test/groups/projects/branches                [PLANNED v0.4]
-    reviews.py        — /api/v1/reviews history                                     [PLANNED v0.3]
-    queue.py          — /api/v1/queue status                                        [PLANNED v0.5]
-    logs.py           — /ws/logs WebSocket live stream                              [PLANNED v0.3]
+    reviews.py        — /api/v1/reviews (list, stats, recent, get by id)
+    queue_api.py      — /api/v1/queue status + drain
+    logs_api.py       — GET /api/v1/logs + WebSocket /ws/logs
   main.py             — App factory, DI wiring, uvicorn entrypoint
 
 prompts/
@@ -193,6 +193,9 @@ After v0.2: open `http://server:8000/ui/` to configure everything.
 | Live logs WebSocket (`/ws/logs`) | v0.2 | ✅ Done |
 | GitLab browse API (groups/projects/branches) | v0.2 | ✅ Done |
 | Queue + concurrency (asyncio.Queue + Semaphore) | v0.2 | ✅ Done |
-| Review history SQLite | v0.3 | 📋 Planned |
-| Auto-approve via GitLab API | v0.4 | 📋 Planned |
-| Valkey distributed backend | v0.6 | 💡 Optional |
+| Review history SQLite (`db.py`, `/api/v1/reviews`) | v0.3 | ✅ Done |
+| Reviews tab in Web UI (table, modal, stats, pagination) | v0.3 | ✅ Done |
+| Auto-approve via GitLab API (CRITICAL/HIGH check) | v0.4 | ✅ Done |
+| Dashboard — review stats + recent history | v0.4 | ✅ Done |
+| docker-compose Valkey profile | v0.4 | ✅ Done |
+| Valkey distributed queue + cache backend | v0.6 | 💡 Optional |

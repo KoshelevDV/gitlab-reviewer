@@ -7,16 +7,16 @@ services:
       - "8000:8000"
     env_file: .env
     volumes:
-      # Mount config and prompts so you can edit without rebuilding
-      - ./config.yml:/app/config.yml:ro
+      - ./config.yml:/app/config.yml
       - ./prompts:/app/prompts:ro
+      - reviewer_data:/app/data       # SQLite database
     healthcheck:
       test: ["CMD", "python", "-c",
              "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 10s
+      start_period: 15s
 
   # Ollama — local LLM backend.
   # Remove this service if ollama is already running on the host.
@@ -27,12 +27,26 @@ services:
       - ollama_data:/root/.ollama
     ports:
       - "11434:11434"
-    # For GPU acceleration on AMD (ROCm/Vulkan), uncomment:
+    # GPU acceleration (AMD ROCm/Vulkan) — uncomment for your hardware:
     # devices:
     #   - /dev/kfd
     #   - /dev/dri
     # environment:
     #   - HSA_OVERRIDE_GFX_VERSION=11.0.0
 
+  # Valkey (Redis-compatible) — optional distributed queue + cache backend.
+  # Enable with: docker compose --profile valkey up -d
+  valkey:
+    image: valkey/valkey:8-alpine
+    profiles: [valkey]
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - valkey_data:/data
+    command: valkey-server --save 60 1 --loglevel warning
+
 volumes:
+  reviewer_data:
   ollama_data:
+  valkey_data:

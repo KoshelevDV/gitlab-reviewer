@@ -92,7 +92,7 @@
     </div>
 
     <!-- Active model -->
-    <div class="card">
+    <div class="card mb-4">
       <div class="text-xs text-gray-400 mb-2 uppercase tracking-wide">Active Model</div>
       <template x-if="config.model && config.model.name">
         <div class="flex flex-wrap gap-4 text-sm">
@@ -105,6 +105,51 @@
       <template x-if="!config.model || !config.model.name">
         <span class="text-yellow-400 text-sm">⚠ No model selected</span>
       </template>
+    </div>
+
+    <!-- Review stats row -->
+    <div class="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-4">
+      <template x-for="[label, key, color] in [
+          ['Total',         'total',         'text-gray-200'],
+          ['Posted',        'posted',        'text-green-400'],
+          ['Skipped',       'skipped',       'text-yellow-400'],
+          ['Errors',        'errors',        'text-red-400'],
+          ['Auto-approved', 'auto_approved', 'text-indigo-400']]" :key="key">
+        <div class="card text-center py-3 cursor-pointer hover:border-indigo-500 transition-colors"
+          @click="activeTab = 'reviews'; reviewFilter.status = key === 'total' ? '' : key; loadReviews()">
+          <div class="text-2xl font-bold" :class="color" x-text="reviewStats[key] ?? 0"></div>
+          <div class="text-xs text-gray-400 mt-0.5" x-text="label"></div>
+        </div>
+      </template>
+    </div>
+
+    <!-- Recent reviews -->
+    <div class="card">
+      <div class="flex items-center justify-between mb-3">
+        <span class="text-xs text-gray-400 uppercase tracking-wide">Recent Reviews</span>
+        <button class="text-indigo-400 hover:text-indigo-300 text-xs"
+          @click="activeTab = 'reviews'">View all →</button>
+      </div>
+      <div class="space-y-1.5" x-init="$watch('activeTab', v => v === 'dashboard' && loadDashboardRecent())">
+        <template x-for="r in dashboardRecent" :key="r.id">
+          <div class="flex items-center gap-2 text-xs py-1 border-b border-gray-700/40 last:border-0">
+            <span class="px-2 py-0.5 rounded-full text-xs"
+              :class="{
+                'bg-green-900 text-green-300':  r.status === 'posted',
+                'bg-yellow-900 text-yellow-300': r.status === 'skipped',
+                'bg-red-900 text-red-300':      r.status === 'error',
+              }"
+              x-text="r.status"></span>
+            <span class="font-mono text-gray-400" x-text="r.project_id"></span>
+            <span class="text-indigo-400 cursor-pointer hover:underline flex-1 truncate"
+              @click="openReview(r); selectedReview = r"
+              x-text="'MR!' + r.mr_iid + ' ' + (r.mr_title?.substring(0,50) || '')"></span>
+            <span class="text-gray-500 whitespace-nowrap"
+              x-text="r.created_at?.substring(0,16).replace('T',' ')"></span>
+          </div>
+        </template>
+        <div x-show="!dashboardRecent?.length" class="text-gray-500 text-xs py-2">No reviews yet</div>
+      </div>
     </div>
   </div>
 
@@ -483,6 +528,137 @@
     </div>
   </div>
 
+  <!-- ── REVIEWS ──────────────────────────────────────────────────── -->
+  <div x-show="activeTab === 'reviews'">
+    <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+      <h2 class="text-lg font-semibold">Review History</h2>
+      <div class="flex gap-2 flex-wrap">
+        <input class="input max-w-[180px]" x-model="reviewFilter.project_id"
+          placeholder="Project ID..." @change="loadReviews()" />
+        <select class="input max-w-[140px]" x-model="reviewFilter.status" @change="loadReviews()">
+          <option value="">All statuses</option>
+          <option value="posted">posted</option>
+          <option value="skipped">skipped</option>
+          <option value="error">error</option>
+          <option value="dry_run">dry_run</option>
+        </select>
+        <button class="btn btn-ghost text-xs" @click="loadReviews()">↻ Refresh</button>
+      </div>
+    </div>
+
+    <!-- Stats row -->
+    <div class="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-4">
+      <template x-for="[label, key, color] in [
+          ['Total',         'total',         'text-gray-200'],
+          ['Posted',        'posted',        'text-green-400'],
+          ['Skipped',       'skipped',       'text-yellow-400'],
+          ['Errors',        'errors',        'text-red-400'],
+          ['Auto-approved', 'auto_approved', 'text-indigo-400']]" :key="key">
+        <div class="card text-center py-3">
+          <div class="text-2xl font-bold" :class="color" x-text="reviewStats[key] ?? 0"></div>
+          <div class="text-xs text-gray-400 mt-0.5" x-text="label"></div>
+        </div>
+      </template>
+    </div>
+
+    <!-- Table -->
+    <div class="card p-0 overflow-hidden">
+      <table class="w-full text-sm">
+        <thead class="border-b border-gray-700">
+          <tr class="text-left text-xs text-gray-400">
+            <th class="px-4 py-2">Time</th>
+            <th class="px-4 py-2">Project</th>
+            <th class="px-4 py-2">MR</th>
+            <th class="px-4 py-2">Author</th>
+            <th class="px-4 py-2">Status</th>
+            <th class="px-4 py-2">Branch</th>
+            <th class="px-4 py-2"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="r in reviews.items" :key="r.id">
+            <tr class="border-b border-gray-700/50 hover:bg-gray-700/30 transition-colors">
+              <td class="px-4 py-2 text-xs text-gray-400 whitespace-nowrap"
+                x-text="r.created_at?.substring(0,16).replace('T',' ')"></td>
+              <td class="px-4 py-2 font-mono text-xs" x-text="r.project_id"></td>
+              <td class="px-4 py-2">
+                <a :href="r.mr_url" target="_blank"
+                  class="text-indigo-400 hover:underline text-xs"
+                  x-text="'MR!' + r.mr_iid + ' ' + (r.mr_title?.substring(0,40) || '')">
+                </a>
+              </td>
+              <td class="px-4 py-2 text-xs" x-text="r.author"></td>
+              <td class="px-4 py-2">
+                <span class="text-xs px-2 py-0.5 rounded-full"
+                  :class="{
+                    'bg-green-900 text-green-300':  r.status === 'posted',
+                    'bg-yellow-900 text-yellow-300': r.status === 'skipped',
+                    'bg-red-900 text-red-300':      r.status === 'error',
+                    'bg-gray-700 text-gray-300':    r.status === 'dry_run',
+                  }"
+                  x-text="r.status + (r.auto_approved ? ' ✓approve' : '')"></span>
+              </td>
+              <td class="px-4 py-2 text-xs text-gray-400 font-mono"
+                x-text="r.source_branch + ' → ' + r.target_branch"></td>
+              <td class="px-4 py-2">
+                <button class="text-indigo-400 hover:text-indigo-300 text-xs"
+                  @click="openReview(r)">View</button>
+              </td>
+            </tr>
+          </template>
+          <tr x-show="reviews.items?.length === 0">
+            <td colspan="7" class="px-4 py-8 text-center text-gray-500 text-sm">No reviews yet</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Pagination -->
+    <div class="flex items-center justify-between mt-3 text-sm" x-show="reviews.total > 0">
+      <span class="text-gray-400">
+        Showing <span x-text="reviews.items?.length"></span> of <span x-text="reviews.total"></span>
+      </span>
+      <div class="flex gap-2">
+        <button class="btn btn-ghost text-xs" :disabled="reviewPage === 0"
+          @click="reviewPage--; loadReviews()">← Prev</button>
+        <span class="self-center text-xs text-gray-400" x-text="'Page ' + (reviewPage + 1)"></span>
+        <button class="btn btn-ghost text-xs"
+          :disabled="(reviewPage + 1) * reviewPageSize >= reviews.total"
+          @click="reviewPage++; loadReviews()">Next →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Review detail modal -->
+  <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+    x-show="selectedReview" x-cloak @click.self="selectedReview = null">
+    <div class="bg-gray-800 rounded-xl border border-gray-600 w-full max-w-3xl max-h-[85vh] flex flex-col mx-4">
+      <div class="flex items-center justify-between px-5 py-3 border-b border-gray-700">
+        <div>
+          <span class="font-semibold" x-text="'MR!' + selectedReview?.mr_iid"></span>
+          <span class="text-gray-400 text-sm ml-2" x-text="selectedReview?.mr_title"></span>
+        </div>
+        <div class="flex items-center gap-3">
+          <a :href="selectedReview?.mr_url" target="_blank"
+            class="text-indigo-400 hover:underline text-xs">Open in GitLab ↗</a>
+          <button @click="selectedReview = null" class="text-gray-400 hover:text-gray-200 text-xl leading-none">×</button>
+        </div>
+      </div>
+      <div class="overflow-y-auto p-5 flex-1">
+        <div class="flex gap-3 flex-wrap text-xs text-gray-400 mb-4">
+          <span>Project: <span class="text-gray-200" x-text="selectedReview?.project_id"></span></span>
+          <span>Author: <span class="text-gray-200" x-text="selectedReview?.author"></span></span>
+          <span>Branch: <span class="font-mono text-gray-200"
+            x-text="selectedReview?.source_branch + ' → ' + selectedReview?.target_branch"></span></span>
+          <span>Prompts: <span class="text-gray-200" x-text="selectedReview?.prompt_names?.join(', ')"></span></span>
+          <span x-show="selectedReview?.auto_approved" class="badge-ok">auto-approved</span>
+        </div>
+        <pre class="text-sm text-gray-200 whitespace-pre-wrap leading-relaxed font-sans"
+          x-text="selectedReview?.review_text || selectedReview?.skip_reason || '(empty)'"></pre>
+      </div>
+    </div>
+  </div>
+
   <!-- ── LOGS ───────────────────────────────────────────────────── -->
   <div x-show="activeTab === 'logs'">
     <div class="flex items-center justify-between mb-3">
@@ -538,6 +714,7 @@ function app() {
       { id: 'prompts',   label: '📝 Prompts' },
       { id: 'gitlab',    label: '🦊 GitLab' },
       { id: 'queue',     label: '⚡ Queue' },
+      { id: 'reviews',   label: '📋 Reviews' },
       { id: 'logs',      label: '📜 Logs' },
     ],
 
@@ -569,6 +746,17 @@ function app() {
     queue: { pending: 0, active: 0, done: 0, errors: 0 },
     queueSaved: false,
 
+    // Dashboard
+    dashboardRecent: [],
+
+    // Reviews tab
+    reviews: { items: [], total: 0 },
+    reviewStats: {},
+    reviewFilter: { project_id: '', status: '' },
+    reviewPage: 0,
+    reviewPageSize: 20,
+    selectedReview: null,
+
     // Logs tab
     logLines: [],
     logFilter: '',
@@ -584,6 +772,12 @@ function app() {
       await this.loadConfig();
       this.startQueuePolling();
       this.connectLogSocket();
+      await this.loadReviewStats();
+      await this.loadDashboardRecent();
+      // Reload reviews when switching to the tab
+      this.$watch('activeTab', (tab) => {
+        if (tab === 'reviews') { this.loadReviews(); this.loadReviewStats(); }
+      });
     },
 
     async loadConfig() {
@@ -775,6 +969,46 @@ function app() {
           }
         } catch (_) {}
       };
+    },
+
+    // ── Reviews ─────────────────────────────────────────────────────
+    async loadDashboardRecent() {
+      try {
+        const r = await fetch('/api/v1/reviews/recent?limit=8');
+        this.dashboardRecent = await r.json();
+      } catch (_) {}
+    },
+
+    async loadReviews() {
+      const params = new URLSearchParams({
+        limit: this.reviewPageSize,
+        offset: this.reviewPage * this.reviewPageSize,
+      });
+      if (this.reviewFilter.project_id) params.set('project_id', this.reviewFilter.project_id);
+      if (this.reviewFilter.status) params.set('status', this.reviewFilter.status);
+      try {
+        const r = await fetch(`/api/v1/reviews?${params}`);
+        this.reviews = await r.json();
+      } catch (e) {
+        this.showToast('Failed to load reviews: ' + e, 'error');
+      }
+    },
+
+    async loadReviewStats() {
+      try {
+        const r = await fetch('/api/v1/reviews/stats');
+        this.reviewStats = await r.json();
+      } catch (_) {}
+    },
+
+    async openReview(r) {
+      // Fetch full record (list view may have trimmed text)
+      try {
+        const resp = await fetch(`/api/v1/reviews/${r.id}`);
+        this.selectedReview = await resp.json();
+      } catch (_) {
+        this.selectedReview = r;
+      }
     },
 
     // ── Helpers ─────────────────────────────────────────────────────

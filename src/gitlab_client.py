@@ -233,6 +233,20 @@ class GitLabClient:
             resp.json().get("id"),
         )
 
+    async def approve_mr(self, project_id: int | str, mr_iid: int) -> bool:
+        """Approve a MR. Returns True on success."""
+        pid = quote(str(project_id), safe="")
+        try:
+            resp = await self._client.post(
+                f"{self._base}/api/v4/projects/{pid}/merge_requests/{mr_iid}/approve"
+            )
+            resp.raise_for_status()
+            logger.info("Auto-approved MR project=%s MR!%d", project_id, mr_iid)
+            return True
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Auto-approve failed for project=%s MR!%d: %s", project_id, mr_iid, exc)
+            return False
+
     async def post_mr_discussion(
         self,
         project_id: int | str,
