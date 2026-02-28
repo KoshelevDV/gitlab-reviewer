@@ -20,8 +20,12 @@ from fastapi import FastAPI
 
 from .api.config import router as config_router
 from .api.gitlab_api import router as gitlab_router
+from .api.health import router as health_router
+from .api.health import set_database as health_set_db
+from .api.health import set_queue_manager as health_set_queue
 from .api.logs_api import router as logs_router
 from .api.logs_api import set_log_buffer
+from .api.metrics_api import router as metrics_router
 from .api.providers import router as providers_router
 from .api.queue_api import router as queue_router
 from .api.queue_api import set_queue_manager
@@ -83,6 +87,8 @@ def create_app() -> FastAPI:
         reviewer_set_db(db)
         reviews_set_db(db)
         reviews_set_queue(queue)
+        health_set_db(db)
+        health_set_queue(queue)
         # Restore dedup cache from recent DB records (survives service restarts)
         await queue.load_seen_from_db(db)
         queue.start(review_fn=reviewer.review_job)
@@ -111,6 +117,8 @@ def create_app() -> FastAPI:
     # Routes
     # ----------------------------------------------------------------
     app.include_router(make_webhook_router())
+    app.include_router(health_router)
+    app.include_router(metrics_router)
     app.include_router(config_router)
     app.include_router(providers_router)
     app.include_router(targets_router)

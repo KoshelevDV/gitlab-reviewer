@@ -23,6 +23,7 @@ from .config import AppConfig, ReviewTarget, get_config
 from .db import Database, ReviewRecord
 from .gitlab_client import FileDiff, GitLabClient, MRInfo
 from .llm_client import LLMClient
+from . import metrics as _metrics
 from .prompt_engine import PromptEngine
 from .queue_manager import QueueManager, ReviewJob
 
@@ -112,6 +113,11 @@ class Reviewer:
             if _db is not None:
                 await _db.save_review(record)
                 logger.debug("Review record saved id=%d", record.id)
+            _metrics.record_review(
+                status=record.status,
+                inline_count=record.inline_count,
+                auto_approved=record.auto_approved,
+            )
 
     async def _do_review(
         self,
@@ -208,11 +214,12 @@ class Reviewer:
             "LLM review: project=%s MR!%d — %d chars, prompts=%s",
             job.project_id, job.mr_iid, len(user_message), prompt_names,
         )
-        review_text = await llm.chat(
-            system_prompt=system_prompt,
-            user_message=user_message,
-            temperature=cfg.model.temperature,
-        )
+        with _metrics.llm_duration_seconds.time():
+            review_text = await llm.chat(
+                system_prompt=system_prompt,
+                user_message=user_message,
+                temperature=cfg.model.temperature,
+            )
         record.review_text = review_text
         self._queue.mark_seen(job.project_id, job.mr_iid, diff_hash)
 

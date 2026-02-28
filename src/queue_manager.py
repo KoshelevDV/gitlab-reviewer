@@ -15,6 +15,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Callable, Coroutine
 
+from . import metrics as _metrics
+
 logger = logging.getLogger(__name__)
 
 
@@ -57,6 +59,7 @@ class QueueManager:
                 "Dedup: skipping project=%s MR!%d (diff hash already seen)",
                 job.project_id, job.mr_iid,
             )
+            _metrics.queue_rejected_total.inc()
             return False
 
         try:
@@ -64,6 +67,8 @@ class QueueManager:
             job.id = self._job_counter
             self._queue.put_nowait(job)
             self._pending += 1
+            _metrics.queue_enqueued_total.inc()
+            _metrics.queue_pending.set(self._pending)
             logger.info(
                 "Enqueued job #%d: project=%s MR!%d (queue depth=%d)",
                 job.id, job.project_id, job.mr_iid, self._pending,
@@ -74,6 +79,7 @@ class QueueManager:
                 "Queue full (max_size=%d), dropping job project=%s MR!%d",
                 self._queue.maxsize, job.project_id, job.mr_iid,
             )
+            _metrics.queue_rejected_total.inc()
             return False
 
     def start(
@@ -117,6 +123,8 @@ class QueueManager:
             job = await self._queue.get()
             self._pending -= 1
             self._active += 1
+            _metrics.queue_pending.set(self._pending)
+            _metrics.queue_active.set(self._active)
             async with self._semaphore:
                 try:
                     logger.info(
@@ -133,6 +141,7 @@ class QueueManager:
                     )
                 finally:
                     self._active -= 1
+                    _metrics.queue_active.set(self._active)
                     self._queue.task_done()
 
     def _is_seen(self, key: tuple) -> bool:
