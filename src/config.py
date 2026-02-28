@@ -71,6 +71,9 @@ class ReviewTarget(BaseModel):
     branches: BranchRules = Field(default_factory=BranchRules)
     auto_approve: bool = False
     prompts: PromptsOverride = Field(default_factory=PromptsOverride)
+    # Author filtering (empty list = no restriction)
+    author_allowlist: list[str] = []  # only review MRs from these authors
+    skip_authors: list[str] = []      # always skip MRs from these authors (bots, CI)
 
 
 class QueueConfig(BaseModel):

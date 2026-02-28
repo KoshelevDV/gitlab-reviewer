@@ -15,6 +15,7 @@ Flow:
 """
 from __future__ import annotations
 
+import fnmatch
 import logging
 import re
 
@@ -143,6 +144,29 @@ class Reviewer:
             record.skip_reason = "draft MR"
             logger.info("Skipping draft MR project=%s MR!%d", job.project_id, job.mr_iid)
             return record
+
+        # Branch pattern and protected-only filtering
+        if target is not None:
+            skip_reason = await _check_branch_rules(mr, target, gitlab)
+            if skip_reason:
+                record.status = "skipped"
+                record.skip_reason = skip_reason
+                logger.info(
+                    "Skipping MR due to branch rules: project=%s MR!%d — %s",
+                    job.project_id, job.mr_iid, skip_reason,
+                )
+                return record
+
+            # Author allowlist / skip_authors filtering
+            author_skip = _check_author_rules(mr, target)
+            if author_skip:
+                record.status = "skipped"
+                record.skip_reason = author_skip
+                logger.info(
+                    "Skipping MR due to author rules: project=%s MR!%d — %s",
+                    job.project_id, job.mr_iid, author_skip,
+                )
+                return record
 
         # ----------------------------------------------------------------
         # 4. Resolve prompt stack
@@ -312,6 +336,61 @@ def _make_llm_client(cfg: AppConfig) -> LLMClient:
         timeout=300,
         api_key=provider.api_key,
     )
+
+
+async def _check_branch_rules(
+    mr: MRInfo, target: ReviewTarget, gitlab: GitLabClient
+) -> str | None:
+    """
+    Return a human-readable skip reason if the MR's target_branch fails
+    the configured BranchRules, otherwise None (= proceed).
+
+    Supports comma-separated patterns (OR logic):
+        pattern: "main,release/*,hotfix/*"
+    """
+    raw_pattern = target.branches.pattern or "*"
+    patterns = [p.strip() for p in raw_pattern.split(",") if p.strip()]
+
+    if not any(fnmatch.fnmatch(mr.target_branch, p) for p in patterns):
+        return (
+            f"target branch '{mr.target_branch}' "
+            f"does not match pattern '{raw_pattern}'"
+        )
+
+    if target.branches.protected_only:
+        try:
+            branches = await gitlab.list_branches(mr.project_id)
+            branch_map = {b.name: b for b in branches}
+            br = branch_map.get(mr.target_branch)
+            if br is not None and not br.protected:
+                return f"target branch '{mr.target_branch}' is not protected"
+        except Exception as exc:
+            logger.warning(
+                "Could not verify branch protection for '%s': %s — proceeding anyway",
+                mr.target_branch, exc,
+            )
+
+    return None
+
+
+def _check_author_rules(mr: MRInfo, target: ReviewTarget) -> str | None:
+    """
+    Return a skip reason if the MR author is filtered out, otherwise None.
+
+    skip_authors takes priority over author_allowlist.
+    """
+    author = mr.author
+
+    if target.skip_authors and author in target.skip_authors:
+        return f"author '{author}' is in skip_authors list"
+
+    if target.author_allowlist and author not in target.author_allowlist:
+        return (
+            f"author '{author}' is not in author_allowlist "
+            f"({', '.join(target.author_allowlist)})"
+        )
+
+    return None
 
 
 def _find_target(cfg: AppConfig, project_id: str) -> ReviewTarget | None:
