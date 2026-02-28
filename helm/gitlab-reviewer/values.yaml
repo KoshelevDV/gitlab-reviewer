@@ -1,0 +1,41 @@
+replicaCount: 1
+
+image:
+  repository: gitlab-reviewer
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+service:
+  type: ClusterIP
+  port: 8000
+
+ingress:
+  enabled: false
+  className: ""
+  host: reviewer.example.com
+  tls: []
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+env:
+  GLR_GITLAB_URL: "https://gitlab.example.com"
+  GLR_OLLAMA_URL: "http://ollama:11434"
+  GLR_OLLAMA_MODEL: "qwen2.5-coder:32b"
+  GLR_LLM_TIMEOUT: "300"
+  GLR_LLM_MAX_DIFF_CHARS: "32000"
+  GLR_LLM_TEMPERATURE: "0.2"
+  GLR_DRY_RUN: "false"
+  GLR_MAX_FILES_PER_REVIEW: "50"
+  GLR_LOG_LEVEL: "info"
+
+# Secrets — override with --set or use existingSecret
+secrets:
+  existingSecret: ""   # if set, use this Secret instead of creating one
+  gitlabToken: ""
+  webhookSecret: ""

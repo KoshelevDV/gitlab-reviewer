@@ -1,0 +1,6 @@
+apiVersion: v2
+name: gitlab-reviewer
+description: Automated GitLab MR code review using local LLMs
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

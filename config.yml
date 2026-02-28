@@ -1,0 +1,23 @@
+# gitlab-reviewer configuration
+# See README for full reference.
+
+prompts:
+  system:
+    # Prompts are loaded in order and joined into a single system prompt.
+    # base MUST be first — it contains the anti-injection rules.
+    # All names resolve to prompts/system/<name>.md or prompts/custom/<name>.md
+    # (custom takes precedence). Use {{include: name}} inside a prompt file
+    # to compose from another file.
+    - base         # role definition + anti-injection rules; includes code_review
+    - security     # security-focused checks
+    # - performance  # uncomment to add performance review
+    # - style        # uncomment to add style/maintainability review
+    # - example_team # your custom team rules (prompts/custom/example_team.md)
+
+reviewers:
+  # Leave empty to allow all authors / all projects.
+  whitelist_authors: []
+  whitelist_projects: []
+
+  # Skip draft / WIP merge requests.
+  skip_draft: true
