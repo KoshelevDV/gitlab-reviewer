@@ -288,7 +288,12 @@ class Reviewer:
         # ----------------------------------------------------------------
         # 5. Fetch diffs
         # ----------------------------------------------------------------
-        diffs = await gitlab.get_diffs(job.project_id, job.mr_iid, max_files=50)
+        effective_max_files = (
+            target.max_files_per_review
+            if target is not None and target.max_files_per_review is not None
+            else cfg.max_files_per_review
+        )
+        diffs = await gitlab.get_diffs(job.project_id, job.mr_iid, max_files=effective_max_files)
         if not diffs:
             record.status = "skipped"
             record.skip_reason = "no diffs found"

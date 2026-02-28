@@ -175,9 +175,7 @@ class TestCooldownIntegration:
         cfg = make_cfg_with_cooldown(global_min=60)  # 60 minutes cooldown
 
         # Seed a recent review record directly in DB (simulates a review 5 minutes ago)
-        recent_time = (datetime.now(UTC) - timedelta(minutes=5)).strftime(
-            "%Y-%m-%dT%H:%M:%SZ"
-        )
+        recent_time = (datetime.now(UTC) - timedelta(minutes=5)).strftime("%Y-%m-%dT%H:%M:%SZ")
         rec = ReviewRecord(
             project_id="42",
             mr_iid=7,
@@ -203,9 +201,7 @@ class TestCooldownIntegration:
         cfg = make_cfg_with_cooldown(global_min=30)
 
         # Seed a review from 45 minutes ago (past the 30-minute window)
-        old_time = (datetime.now(UTC) - timedelta(minutes=45)).strftime(
-            "%Y-%m-%dT%H:%M:%SZ"
-        )
+        old_time = (datetime.now(UTC) - timedelta(minutes=45)).strftime("%Y-%m-%dT%H:%M:%SZ")
         rec = ReviewRecord(
             project_id="42",
             mr_iid=7,
@@ -230,9 +226,7 @@ class TestCooldownIntegration:
         cfg = make_cfg_with_cooldown(global_min=120, target_min=0)
 
         # Seed a recent review 2 minutes ago
-        recent_time = (datetime.now(UTC) - timedelta(minutes=2)).strftime(
-            "%Y-%m-%dT%H:%M:%SZ"
-        )
+        recent_time = (datetime.now(UTC) - timedelta(minutes=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
         rec = ReviewRecord(
             project_id="42",
             mr_iid=7,

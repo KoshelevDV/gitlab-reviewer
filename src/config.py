@@ -81,6 +81,8 @@ class ReviewTarget(BaseModel):
     # Cooldown: skip reviews within N minutes of the last review of the same MR
     # None = inherit from AppConfig.review_cooldown_minutes; 0 = disabled per-target
     review_cooldown_minutes: int | None = None
+    # Max files per review — None = use AppConfig.max_files_per_review
+    max_files_per_review: int | None = None
 
 
 class NotificationFormat(StrEnum):
@@ -146,6 +148,8 @@ class AppConfig(BaseModel):
     notifications: NotificationConfig = Field(default_factory=NotificationConfig)
     # Review cooldown — skip re-reviews within this window (0 = disabled)
     review_cooldown_minutes: int = 0
+    # Max files to include in a single review (files beyond this count are truncated)
+    max_files_per_review: int = 50
     # Global file exclusions applied to every review (per-target file_exclude is appended)
     file_exclude: list[str] = Field(
         default_factory=lambda: [

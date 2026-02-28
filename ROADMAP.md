@@ -384,6 +384,9 @@ Browser ─────────────┤ GET /ui/                     
 | v0.5c | Filters | Branch pattern (glob, comma-sep), author allowlist/skip | ✅ Done |
 | v0.5d | Targets API + Retry | CRUD /api/v1/targets, POST /reviews/{id}/retry, UI Targets tab | ✅ Done |
 | v0.6 | Observability | GET /metrics (Prometheus), GET /health, queue gauge instrumentation | ✅ Done |
-| v0.7 | CI + Notifications | GitHub Actions CI (lint+tests+Docker), Slack/Telegram webhooks | 🔄 In Progress |
+| v0.7 | CI + Notifications | Blocking ruff+pytest CI, Slack/Telegram/Generic notifications UI | ✅ Done |
+| v0.7b | Notifications UI | Web UI tab + /api/v1/notifications/test endpoint | ✅ Done |
+| v0.7c | File Filters | file_exclude globs (global + per-target), vendor/lock defaults | ✅ Done |
+| v0.7d | Cooldown | review_cooldown_minutes per MR, per-target override | ✅ Done |
 | v0.8 | Valkey | Distributed queue+cache, multi-instance | 📋 Planned |
 | v0.9 | Kafka | High-volume event streaming | 💡 Optional |

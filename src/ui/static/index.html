@@ -514,7 +514,7 @@
     </div>
 
     <!-- Live stats -->
-    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
       <template x-for="[label, key, color] in [
           ['Pending', 'pending', 'text-yellow-400'],
           ['Active',  'active',  'text-indigo-400'],
@@ -525,6 +525,43 @@
           <div class="text-xs text-gray-400 mt-1" x-text="label"></div>
         </div>
       </template>
+    </div>
+
+    <!-- Review Defaults -->
+    <h3 class="font-semibold mb-3">Review Defaults</h3>
+    <div class="card mb-4">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label class="label">Max files per review</label>
+          <input class="input" type="number" min="1" max="500"
+            x-model.number="config.max_files_per_review" />
+          <p class="text-xs text-gray-500 mt-1">Files beyond this limit are ignored in the diff</p>
+        </div>
+        <div>
+          <label class="label">Cooldown (minutes)</label>
+          <input class="input" type="number" min="0"
+            x-model.number="config.review_cooldown_minutes" />
+          <p class="text-xs text-gray-500 mt-1">0 = disabled. Skip re-reviews within this window</p>
+        </div>
+      </div>
+
+      <!-- File exclusions -->
+      <div class="mt-4">
+        <label class="label">File exclusion patterns</label>
+        <textarea class="input font-mono text-xs" rows="6"
+          :value="(config.file_exclude ?? []).join('\n')"
+          @input="config.file_exclude = $event.target.value.split('\n').map(l => l.trim()).filter(Boolean)"
+          placeholder="*.lock&#10;vendor/**&#10;node_modules/**&#10;*.min.js&#10;dist/**"></textarea>
+        <p class="text-xs text-gray-500 mt-1">
+          One pattern per line. Supports fnmatch globs and <code>dir/**</code> prefix matching.
+          These apply globally; per-target overrides are set in the Targets tab.
+        </p>
+      </div>
+
+      <div class="mt-4 flex gap-2">
+        <button class="btn btn-primary" @click="saveReviewDefaults()">Save Review Defaults</button>
+        <span class="text-green-400 text-xs self-center" x-show="reviewDefaultsSaved">✓ Saved</span>
+      </div>
     </div>
   </div>
 
@@ -940,7 +977,7 @@ function app() {
     ],
 
     // Config
-    config: { providers: [], model: {}, gitlab: { auth_type: 'token', tls_verify: true }, review_targets: [], queue: { backend: 'memory', max_concurrent: 3, max_queue_size: 100 }, prompts: { system: [] }, notifications: { enabled: false, format: 'generic', webhook_url: '', telegram_bot_token: '', telegram_chat_id: '', on_posted: true, on_error: false, on_skipped: false } },
+    config: { providers: [], model: {}, gitlab: { auth_type: 'token', tls_verify: true }, review_targets: [], queue: { backend: 'memory', max_concurrent: 3, max_queue_size: 100 }, prompts: { system: [] }, notifications: { enabled: false, format: 'generic', webhook_url: '', telegram_bot_token: '', telegram_chat_id: '', on_posted: true, on_error: false, on_skipped: false }, max_files_per_review: 50, review_cooldown_minutes: 0, file_exclude: [] },
     activeProvider: null,
 
     // Provider tab
@@ -978,6 +1015,9 @@ function app() {
     // Notifications tab
     notificationSaved: false,
     notificationTestResult: null,
+
+    // Review defaults
+    reviewDefaultsSaved: false,
 
     // Dashboard
     dashboardRecent: [],
@@ -1164,6 +1204,17 @@ function app() {
       this.notificationSaved = true;
       setTimeout(() => this.notificationSaved = false, 2500);
       this.showToast('Notification config saved');
+    },
+
+    async saveReviewDefaults() {
+      await this.patchConfig({
+        max_files_per_review: this.config.max_files_per_review,
+        review_cooldown_minutes: this.config.review_cooldown_minutes,
+        file_exclude: this.config.file_exclude,
+      });
+      this.reviewDefaultsSaved = true;
+      setTimeout(() => this.reviewDefaultsSaved = false, 2500);
+      this.showToast('Review defaults saved');
     },
 
     async testNotification() {
