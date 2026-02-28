@@ -1,4 +1,5 @@
 """GitLab browse API — /api/v1/gitlab"""
+
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
@@ -27,12 +28,14 @@ async def test_gitlab_connection() -> JSONResponse:
     client = GitLabClient(cfg.gitlab.url, token)
     try:
         info = await client.test_connection()
-        return JSONResponse({
-            "ok": info.ok,
-            "version": info.version,
-            "username": info.username,
-            "error": info.error,
-        })
+        return JSONResponse(
+            {
+                "ok": info.ok,
+                "version": info.version,
+                "username": info.username,
+                "error": info.error,
+            }
+        )
     finally:
         await client.aclose()
 
@@ -42,10 +45,9 @@ async def list_groups(search: str = "") -> JSONResponse:
     client = _make_client()
     try:
         groups = await client.list_groups(search=search)
-        return JSONResponse([
-            {"id": g.id, "name": g.name, "full_path": g.full_path}
-            for g in groups
-        ])
+        return JSONResponse(
+            [{"id": g.id, "name": g.name, "full_path": g.full_path} for g in groups]
+        )
     finally:
         await client.aclose()
 
@@ -55,15 +57,17 @@ async def list_projects(search: str = "") -> JSONResponse:
     client = _make_client()
     try:
         projects = await client.list_projects(search=search)
-        return JSONResponse([
-            {
-                "id": p.id,
-                "name": p.name,
-                "path": p.path_with_namespace,
-                "default_branch": p.default_branch,
-            }
-            for p in projects
-        ])
+        return JSONResponse(
+            [
+                {
+                    "id": p.id,
+                    "name": p.name,
+                    "path": p.path_with_namespace,
+                    "default_branch": p.default_branch,
+                }
+                for p in projects
+            ]
+        )
     finally:
         await client.aclose()
 
@@ -73,9 +77,8 @@ async def list_branches(project_id: int) -> JSONResponse:
     client = _make_client()
     try:
         branches = await client.list_branches(project_id)
-        return JSONResponse([
-            {"name": b.name, "protected": b.protected, "default": b.default}
-            for b in branches
-        ])
+        return JSONResponse(
+            [{"name": b.name, "protected": b.protected, "default": b.default} for b in branches]
+        )
     finally:
         await client.aclose()

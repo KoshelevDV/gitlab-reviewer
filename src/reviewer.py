@@ -13,17 +13,19 @@ Flow:
     8. Auto-approve if configured and no CRITICAL/HIGH issues
     9. Persist ReviewRecord to SQLite
 """
+
 from __future__ import annotations
 
 import fnmatch
 import logging
 import re
+from datetime import UTC
 
+from . import metrics as _metrics
 from .config import AppConfig, ReviewTarget, get_config
 from .db import Database, ReviewRecord
 from .gitlab_client import FileDiff, GitLabClient, MRInfo
 from .llm_client import LLMClient
-from . import metrics as _metrics
 from .prompt_engine import PromptEngine
 from .queue_manager import QueueManager, ReviewJob
 
@@ -43,8 +45,8 @@ def set_database(db: Database) -> None:
 
 _INLINE_RE = re.compile(
     r'<!--\s*REVIEW_INLINE\s+file="([^"]+)"\s+line="(\d+)"\s*-->'
-    r'\s*(.*?)\s*'
-    r'<!--\s*REVIEW_ENDINLINE\s*-->',
+    r"\s*(.*?)\s*"
+    r"<!--\s*REVIEW_ENDINLINE\s*-->",
     re.DOTALL | re.IGNORECASE,
 )
 
@@ -159,7 +161,9 @@ class Reviewer:
                 record.skip_reason = skip_reason
                 logger.info(
                     "Skipping MR due to branch rules: project=%s MR!%d — %s",
-                    job.project_id, job.mr_iid, skip_reason,
+                    job.project_id,
+                    job.mr_iid,
+                    skip_reason,
                 )
                 return record
 
@@ -170,7 +174,9 @@ class Reviewer:
                 record.skip_reason = author_skip
                 logger.info(
                     "Skipping MR due to author rules: project=%s MR!%d — %s",
-                    job.project_id, job.mr_iid, author_skip,
+                    job.project_id,
+                    job.mr_iid,
+                    author_skip,
                 )
                 return record
 
@@ -212,7 +218,10 @@ class Reviewer:
         # ----------------------------------------------------------------
         logger.info(
             "LLM review: project=%s MR!%d — %d chars, prompts=%s",
-            job.project_id, job.mr_iid, len(user_message), prompt_names,
+            job.project_id,
+            job.mr_iid,
+            len(user_message),
+            prompt_names,
         )
         with _metrics.llm_duration_seconds.time():
             review_text = await llm.chat(
@@ -250,7 +259,8 @@ class Reviewer:
                     }
                     try:
                         await gitlab.post_mr_discussion(
-                            job.project_id, job.mr_iid,
+                            job.project_id,
+                            job.mr_iid,
                             _format_inline_body(ann["body"]),
                             position=position,
                         )
@@ -258,7 +268,9 @@ class Reviewer:
                     except Exception as exc:
                         logger.warning(
                             "Inline comment failed (%s line %d): %s",
-                            ann["path"], ann["line"], exc,
+                            ann["path"],
+                            ann["line"],
+                            exc,
                         )
                         failed_inline += 1
                         # Append failed inline to summary instead
@@ -267,22 +279,19 @@ class Reviewer:
                         )
                 logger.info(
                     "Inline comments: %d posted, %d failed (fell back to summary)",
-                    posted_inline, failed_inline,
+                    posted_inline,
+                    failed_inline,
                 )
             else:
                 # No diff refs — append all inline annotations to summary
                 logger.info("No diff refs available; appending inline annotations to summary")
                 for ann in inline_comments:
-                    summary_text += (
-                        f"\n\n**📍 `{ann['path']}` line {ann['line']}**\n{ann['body']}"
-                    )
+                    summary_text += f"\n\n**📍 `{ann['path']}` line {ann['line']}**\n{ann['body']}"
 
         # ----------------------------------------------------------------
         # 9. Post summary comment
         # ----------------------------------------------------------------
-        summary_comment = _format_summary_comment(
-            summary_text, inline_count=len(inline_comments)
-        )
+        summary_comment = _format_summary_comment(summary_text, inline_count=len(inline_comments))
         await gitlab.post_mr_note(job.project_id, job.mr_iid, summary_comment)
         record.status = "posted"
         logger.info("Review posted: project=%s MR!%d", job.project_id, job.mr_iid)
@@ -300,7 +309,10 @@ class Reviewer:
             else:
                 logger.info(
                     "Auto-approve skipped (critical=%d high=%d): project=%s MR!%d",
-                    _issues["critical"], _issues["high"], job.project_id, job.mr_iid,
+                    _issues["critical"],
+                    _issues["high"],
+                    job.project_id,
+                    job.mr_iid,
                 )
 
         return record
@@ -329,6 +341,7 @@ class Reviewer:
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_gitlab_client(cfg: AppConfig) -> GitLabClient:
     return GitLabClient(cfg.gitlab.url, cfg.gitlab_token)
 
@@ -345,9 +358,7 @@ def _make_llm_client(cfg: AppConfig) -> LLMClient:
     )
 
 
-async def _check_branch_rules(
-    mr: MRInfo, target: ReviewTarget, gitlab: GitLabClient
-) -> str | None:
+async def _check_branch_rules(mr: MRInfo, target: ReviewTarget, gitlab: GitLabClient) -> str | None:
     """
     Return a human-readable skip reason if the MR's target_branch fails
     the configured BranchRules, otherwise None (= proceed).
@@ -359,10 +370,7 @@ async def _check_branch_rules(
     patterns = [p.strip() for p in raw_pattern.split(",") if p.strip()]
 
     if not any(fnmatch.fnmatch(mr.target_branch, p) for p in patterns):
-        return (
-            f"target branch '{mr.target_branch}' "
-            f"does not match pattern '{raw_pattern}'"
-        )
+        return f"target branch '{mr.target_branch}' does not match pattern '{raw_pattern}'"
 
     if target.branches.protected_only:
         try:
@@ -374,7 +382,8 @@ async def _check_branch_rules(
         except Exception as exc:
             logger.warning(
                 "Could not verify branch protection for '%s': %s — proceeding anyway",
-                mr.target_branch, exc,
+                mr.target_branch,
+                exc,
             )
 
     return None
@@ -393,8 +402,7 @@ def _check_author_rules(mr: MRInfo, target: ReviewTarget) -> str | None:
 
     if target.author_allowlist and author not in target.author_allowlist:
         return (
-            f"author '{author}' is not in author_allowlist "
-            f"({', '.join(target.author_allowlist)})"
+            f"author '{author}' is not in author_allowlist ({', '.join(target.author_allowlist)})"
         )
 
     return None
@@ -430,8 +438,9 @@ def _format_inline_body(body: str) -> str:
 
 
 def _format_summary_comment(summary_text: str, inline_count: int) -> str:
-    from datetime import datetime, timezone
-    ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    from datetime import datetime
+
+    ts = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
     inline_note = (
         f"*{inline_count} inline annotation(s) posted directly on the diff.*\n\n"
         if inline_count > 0

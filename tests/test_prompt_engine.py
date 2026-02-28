@@ -1,14 +1,13 @@
 """Tests for PromptEngine — prompt loading, {{include:}}, injection sanitisation."""
+
 from __future__ import annotations
 
-import pytest
-from src.prompt_engine import PromptEngine, _INJECTION_PATTERNS
-
+from src.prompt_engine import PromptEngine
 
 # ── sanitize_untrusted ────────────────────────────────────────────────────────
 
-class TestSanitizeUntrusted:
 
+class TestSanitizeUntrusted:
     def test_clean_text_unchanged(self, prompt_engine):
         text = "def foo():\n    return 42"
         assert prompt_engine.sanitize_untrusted(text) == text
@@ -116,8 +115,8 @@ class TestSanitizeUntrusted:
 
 # ── Prompt loading and {{include:}} ───────────────────────────────────────────
 
-class TestPromptLoading:
 
+class TestPromptLoading:
     def test_build_system_prompt_single(self, prompt_engine):
         result = prompt_engine.build_system_prompt(["base"])
         assert "code reviewer" in result.lower() or len(result) > 0
@@ -133,9 +132,7 @@ class TestPromptLoading:
     def test_include_directive_resolved(self, prompts_dir):
         # Create a prompt that includes another
         sys_dir = prompts_dir / "system"
-        (sys_dir / "parent.md").write_text(
-            "Parent content\n{{include: security}}\nEnd"
-        )
+        (sys_dir / "parent.md").write_text("Parent content\n{{include: security}}\nEnd")
         engine = PromptEngine(prompts_dir)
         result = engine.build_system_prompt(["parent"])
         assert "Parent content" in result
@@ -163,9 +160,7 @@ class TestPromptLoading:
         """Deep include chain should stop at depth limit, not crash."""
         sys_dir = prompts_dir / "system"
         for i in range(10):
-            (sys_dir / f"deep_{i}.md").write_text(
-                f"Level {i}\n{{{{include: deep_{i+1}}}}}"
-            )
+            (sys_dir / f"deep_{i}.md").write_text(f"Level {i}\n{{{{include: deep_{i + 1}}}}}")
         (sys_dir / "deep_10.md").write_text("Bottom")
         engine = PromptEngine(prompts_dir)
         result = engine.build_system_prompt(["deep_0"])

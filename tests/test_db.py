@@ -1,8 +1,8 @@
 """Tests for SQLite Database — ReviewRecord CRUD, filters, stats."""
+
 from __future__ import annotations
 
-import pytest
-from src.db import Database, ReviewRecord
+from src.db import ReviewRecord
 
 
 def _make_record(**kwargs) -> ReviewRecord:
@@ -24,7 +24,6 @@ def _make_record(**kwargs) -> ReviewRecord:
 
 
 class TestSaveAndGet:
-
     async def test_save_returns_id(self, db):
         rec = _make_record()
         rid = await db.save_review(rec)
@@ -64,7 +63,6 @@ class TestSaveAndGet:
 
 
 class TestListReviews:
-
     async def test_list_returns_all(self, db):
         for i in range(3):
             await db.save_review(_make_record(mr_iid=i + 1))
@@ -118,7 +116,6 @@ class TestListReviews:
 
 
 class TestStats:
-
     async def test_empty_db_stats(self, db):
         stats = await db.stats()
         assert stats.get("total", 0) == 0
@@ -142,7 +139,6 @@ class TestStats:
 
 
 class TestRecent:
-
     async def test_recent_returns_latest_first(self, db):
         for i in range(5):
             await db.save_review(_make_record(mr_iid=i + 1))

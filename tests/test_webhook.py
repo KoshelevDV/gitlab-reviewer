@@ -1,12 +1,11 @@
 """Tests for webhook handler — HMAC auth, event filtering, enqueue."""
+
 from __future__ import annotations
 
-import pytest
 from tests.conftest import make_mr_webhook_body
 
-
 WEBHOOK_URL = "/webhook/gitlab"
-SECRET = "test-secret"
+SECRET = "test-secret"  # noqa: S105
 HEADERS = {
     "X-Gitlab-Token": SECRET,
     "X-Gitlab-Event": "Merge Request Hook",
@@ -15,7 +14,6 @@ HEADERS = {
 
 
 class TestAuthentication:
-
     async def test_valid_token_accepted(self, app):
         body = make_mr_webhook_body()
         r = await app.post(WEBHOOK_URL, json=body, headers=HEADERS)
@@ -35,7 +33,6 @@ class TestAuthentication:
 
 
 class TestEventFiltering:
-
     async def test_non_mr_hook_ignored(self, app):
         body = make_mr_webhook_body()
         headers = {**HEADERS, "X-Gitlab-Event": "Push Hook"}
@@ -76,7 +73,6 @@ class TestEventFiltering:
 
 
 class TestPayloadValidation:
-
     async def test_missing_project_id_returns_400(self, app):
         body = {
             "object_attributes": {"iid": 1, "action": "open"},
@@ -103,7 +99,6 @@ class TestPayloadValidation:
 
 
 class TestHealthEndpoint:
-
     async def test_health_returns_ok(self, app):
         r = await app.get("/health")
         assert r.status_code == 200

@@ -1,4 +1,5 @@
 """Tests for GitLabClient — mock httpx with respx."""
+
 from __future__ import annotations
 
 import pytest
@@ -7,18 +8,16 @@ from httpx import Response
 
 from src.gitlab_client import GitLabClient
 
-
 BASE = "http://gitlab.test"
 
 
 @pytest.fixture
 def client():
-    c = GitLabClient(base_url=BASE, token="test-token", timeout=5)
+    c = GitLabClient(base_url=BASE, token="test-token", timeout=5)  # noqa: S106
     yield c
 
 
 class TestTestConnection:
-
     @respx.mock
     async def test_successful_connection(self, client):
         respx.get(f"{BASE}/api/v4/version").mock(
@@ -45,19 +44,21 @@ class TestTestConnection:
 
 
 class TestGetMR:
-
     @respx.mock
     async def test_get_mr_returns_info(self, client):
         respx.get(f"{BASE}/api/v4/projects/42/merge_requests/7").mock(
-            return_value=Response(200, json={
-                "title": "My feature",
-                "description": "Does stuff",
-                "author": {"username": "bob"},
-                "source_branch": "feature",
-                "target_branch": "main",
-                "draft": False,
-                "web_url": "http://gitlab.test/proj/-/merge_requests/7",
-            })
+            return_value=Response(
+                200,
+                json={
+                    "title": "My feature",
+                    "description": "Does stuff",
+                    "author": {"username": "bob"},
+                    "source_branch": "feature",
+                    "target_branch": "main",
+                    "draft": False,
+                    "web_url": "http://gitlab.test/proj/-/merge_requests/7",
+                },
+            )
         )
         mr = await client.get_mr(42, 7)
         assert mr.title == "My feature"
@@ -68,15 +69,18 @@ class TestGetMR:
     @respx.mock
     async def test_draft_mr_detected_by_flag(self, client):
         respx.get(f"{BASE}/api/v4/projects/42/merge_requests/7").mock(
-            return_value=Response(200, json={
-                "title": "My feature",
-                "description": "",
-                "author": {"username": "bob"},
-                "source_branch": "f",
-                "target_branch": "main",
-                "draft": True,
-                "web_url": "http://gitlab.test/mr",
-            })
+            return_value=Response(
+                200,
+                json={
+                    "title": "My feature",
+                    "description": "",
+                    "author": {"username": "bob"},
+                    "source_branch": "f",
+                    "target_branch": "main",
+                    "draft": True,
+                    "web_url": "http://gitlab.test/mr",
+                },
+            )
         )
         mr = await client.get_mr(42, 7)
         assert mr.is_draft is True
@@ -85,15 +89,18 @@ class TestGetMR:
     @respx.mock
     async def test_draft_mr_detected_by_title_prefix(self, client):
         respx.get(f"{BASE}/api/v4/projects/42/merge_requests/7").mock(
-            return_value=Response(200, json={
-                "title": "Draft: my feature",
-                "description": "",
-                "author": {"username": "bob"},
-                "source_branch": "f",
-                "target_branch": "main",
-                "draft": False,
-                "web_url": "http://gitlab.test/mr",
-            })
+            return_value=Response(
+                200,
+                json={
+                    "title": "Draft: my feature",
+                    "description": "",
+                    "author": {"username": "bob"},
+                    "source_branch": "f",
+                    "target_branch": "main",
+                    "draft": False,
+                    "web_url": "http://gitlab.test/mr",
+                },
+            )
         )
         mr = await client.get_mr(42, 7)
         assert mr.is_draft is True
@@ -101,20 +108,22 @@ class TestGetMR:
 
 
 class TestGetDiffs:
-
     @respx.mock
     async def test_get_diffs_parses_files(self, client):
         respx.get(f"{BASE}/api/v4/projects/42/merge_requests/7/diffs").mock(
-            return_value=Response(200, json=[
-                {
-                    "old_path": "a.py",
-                    "new_path": "a.py",
-                    "diff": "@@ -1,3 +1,4 @@\n+new line",
-                    "new_file": False,
-                    "deleted_file": False,
-                    "renamed_file": False,
-                }
-            ])
+            return_value=Response(
+                200,
+                json=[
+                    {
+                        "old_path": "a.py",
+                        "new_path": "a.py",
+                        "diff": "@@ -1,3 +1,4 @@\n+new line",
+                        "new_file": False,
+                        "deleted_file": False,
+                        "renamed_file": False,
+                    }
+                ],
+            )
         )
         diffs = await client.get_diffs(42, 7)
         assert len(diffs) == 1
@@ -133,14 +142,16 @@ class TestGetDiffs:
 
 
 class TestListGroups:
-
     @respx.mock
     async def test_list_groups_returns_list(self, client):
         respx.get(f"{BASE}/api/v4/groups").mock(
-            return_value=Response(200, json=[
-                {"id": 1, "name": "alpha", "full_path": "alpha"},
-                {"id": 2, "name": "beta", "full_path": "org/beta"},
-            ])
+            return_value=Response(
+                200,
+                json=[
+                    {"id": 1, "name": "alpha", "full_path": "alpha"},
+                    {"id": 2, "name": "beta", "full_path": "org/beta"},
+                ],
+            )
         )
         groups = await client.list_groups()
         assert len(groups) == 2
@@ -149,14 +160,16 @@ class TestListGroups:
 
 
 class TestListBranches:
-
     @respx.mock
     async def test_list_branches_protected_flag(self, client):
         respx.get(f"{BASE}/api/v4/projects/42/repository/branches").mock(
-            return_value=Response(200, json=[
-                {"name": "main", "protected": True, "default": True},
-                {"name": "feature", "protected": False, "default": False},
-            ])
+            return_value=Response(
+                200,
+                json=[
+                    {"name": "main", "protected": True, "default": True},
+                    {"name": "feature", "protected": False, "default": False},
+                ],
+            )
         )
         branches = await client.list_branches(42)
         main = next(b for b in branches if b.name == "main")
@@ -166,7 +179,6 @@ class TestListBranches:
 
 
 class TestApproveMR:
-
     @respx.mock
     async def test_approve_returns_true_on_success(self, client):
         respx.post(f"{BASE}/api/v4/projects/42/merge_requests/7/approve").mock(
@@ -187,7 +199,6 @@ class TestApproveMR:
 
 
 class TestPostMRNote:
-
     @respx.mock
     async def test_post_note_calls_correct_endpoint(self, client):
         route = respx.post(f"{BASE}/api/v4/projects/42/merge_requests/7/notes").mock(

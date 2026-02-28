@@ -1,7 +1,7 @@
 """Config API — /api/v1/config"""
+
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
@@ -19,8 +19,7 @@ def _mask_secrets(data: Any) -> Any:
     """Recursively mask secret-looking fields in dicts."""
     if isinstance(data, dict):
         return {
-            k: _MASKED if k in _SECRET_FIELDS and v else _mask_secrets(v)
-            for k, v in data.items()
+            k: _MASKED if k in _SECRET_FIELDS and v else _mask_secrets(v) for k, v in data.items()
         }
     if isinstance(data, list):
         return [_mask_secrets(item) for item in data]
@@ -62,11 +61,13 @@ async def update_config(body: dict) -> JSONResponse:
 async def reload_config_endpoint() -> JSONResponse:
     """Hot-reload config.yml without restarting the process."""
     cfg = reload_config(CONFIG_PATH)
-    return JSONResponse({
-        "status": "ok",
-        "providers": len(cfg.providers),
-        "review_targets": len(cfg.review_targets),
-    })
+    return JSONResponse(
+        {
+            "status": "ok",
+            "providers": len(cfg.providers),
+            "review_targets": len(cfg.review_targets),
+        }
+    )
 
 
 @router.get("/schema")
@@ -76,6 +77,7 @@ async def get_schema() -> JSONResponse:
 
 
 # ---------------------------------------------------------------------------
+
 
 def _deep_merge(base: dict, override: dict) -> dict:
     result = dict(base)

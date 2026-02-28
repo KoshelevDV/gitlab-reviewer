@@ -1,4 +1,5 @@
 """Logs API — WebSocket /ws/logs + REST /api/v1/logs"""
+
 from __future__ import annotations
 
 import asyncio
@@ -56,11 +57,11 @@ async def ws_logs(websocket: WebSocket) -> None:
             try:
                 line = await asyncio.wait_for(queue.get(), timeout=30.0)
                 await websocket.send_text(line)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 # Send ping to keep connection alive
                 await websocket.send_text('{"type":"ping"}')
     except (WebSocketDisconnect, Exception):
-        pass
+        logger.debug("WebSocket log stream ended", exc_info=False)
     finally:
         _log_buffer.unsubscribe(queue)
         logger.debug("WebSocket log client disconnected")

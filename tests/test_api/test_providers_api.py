@@ -1,10 +1,9 @@
 """Tests for /api/v1/providers — CRUD, test connection, model listing."""
+
 from __future__ import annotations
 
-import pytest
 import respx
 from httpx import Response
-
 
 NEW_PROVIDER = {
     "id": "new-ollama",
@@ -17,7 +16,6 @@ NEW_PROVIDER = {
 
 
 class TestListProviders:
-
     async def test_list_returns_configured_providers(self, app):
         r = await app.get("/api/v1/providers")
         assert r.status_code == 200
@@ -29,7 +27,6 @@ class TestListProviders:
 
 
 class TestAddProvider:
-
     async def test_add_provider_returns_201(self, app):
         r = await app.post("/api/v1/providers", json=NEW_PROVIDER)
         assert r.status_code == 201
@@ -48,20 +45,31 @@ class TestAddProvider:
         assert r.status_code == 409
 
     async def test_add_llamacpp_provider(self, app):
-        prov = {**NEW_PROVIDER, "id": "llamacpp-1", "type": "llamacpp",
-                "url": "http://llamacpp:8080"}
+        prov = {
+            **NEW_PROVIDER,
+            "id": "llamacpp-1",
+            "type": "llamacpp",
+            "url": "http://llamacpp:8080",
+        }
         r = await app.post("/api/v1/providers", json=prov)
         assert r.status_code == 201
 
 
 class TestUpdateProvider:
-
     async def test_update_provider_name(self, app):
-        r = await app.put("/api/v1/providers/test-provider", json={
-            **{"id": "test-provider", "name": "Updated Name",
-               "type": "ollama", "url": "http://fake-ollama:11434",
-               "api_key": "", "active": True}
-        })
+        r = await app.put(
+            "/api/v1/providers/test-provider",
+            json={
+                **{
+                    "id": "test-provider",
+                    "name": "Updated Name",
+                    "type": "ollama",
+                    "url": "http://fake-ollama:11434",
+                    "api_key": "",
+                    "active": True,
+                }
+            },
+        )
         assert r.status_code == 200
         r2 = await app.get("/api/v1/providers")
         prov = next(p for p in r2.json() if p["id"] == "test-provider")
@@ -73,7 +81,6 @@ class TestUpdateProvider:
 
 
 class TestDeleteProvider:
-
     async def test_delete_provider(self, app):
         await app.post("/api/v1/providers", json=NEW_PROVIDER)
         r = await app.delete("/api/v1/providers/new-ollama")
@@ -88,7 +95,6 @@ class TestDeleteProvider:
 
 
 class TestTestProvider:
-
     @respx.mock
     async def test_test_ollama_provider_success(self, app):
         respx.get("http://fake-ollama:11434/api/version").mock(
@@ -102,9 +108,7 @@ class TestTestProvider:
 
     @respx.mock
     async def test_test_provider_failure(self, app):
-        respx.get("http://fake-ollama:11434/api/version").mock(
-            return_value=Response(503)
-        )
+        respx.get("http://fake-ollama:11434/api/version").mock(return_value=Response(503))
         r = await app.post("/api/v1/providers/test-provider/test")
         data = r.json()
         assert data["ok"] is False
@@ -115,16 +119,18 @@ class TestTestProvider:
 
 
 class TestGetModels:
-
     @respx.mock
     async def test_list_models_from_ollama(self, app):
         respx.get("http://fake-ollama:11434/api/tags").mock(
-            return_value=Response(200, json={
-                "models": [
-                    {"name": "qwen2.5-coder:32b"},
-                    {"name": "llama3.2:latest"},
-                ]
-            })
+            return_value=Response(
+                200,
+                json={
+                    "models": [
+                        {"name": "qwen2.5-coder:32b"},
+                        {"name": "llama3.2:latest"},
+                    ]
+                },
+            )
         )
         r = await app.get("/api/v1/providers/test-provider/models")
         assert r.status_code == 200
@@ -136,13 +142,16 @@ class TestGetModels:
     @respx.mock
     async def test_get_model_info(self, app):
         respx.post("http://fake-ollama:11434/api/show").mock(
-            return_value=Response(200, json={
-                "model_info": {
-                    "llama.context_length": 32768,
-                    "general.architecture": "qwen2",
-                    "general.parameter_count": 7_000_000_000,
-                }
-            })
+            return_value=Response(
+                200,
+                json={
+                    "model_info": {
+                        "llama.context_length": 32768,
+                        "general.architecture": "qwen2",
+                        "general.parameter_count": 7_000_000_000,
+                    }
+                },
+            )
         )
         r = await app.get("/api/v1/providers/test-provider/models/qwen2.5-coder:7b/info")
         assert r.status_code == 200

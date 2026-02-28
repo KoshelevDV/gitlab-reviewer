@@ -1,8 +1,9 @@
 """GitLab API client — fetch MR diffs, post review comments, browse resources."""
+
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from urllib.parse import quote
 
 import httpx
@@ -103,13 +104,10 @@ class GitLabClient:
         resp = await self._client.get(f"{self._base}/api/v4/groups", params=params)
         resp.raise_for_status()
         return [
-            GitLabGroup(id=g["id"], name=g["name"], full_path=g["full_path"])
-            for g in resp.json()
+            GitLabGroup(id=g["id"], name=g["name"], full_path=g["full_path"]) for g in resp.json()
         ]
 
-    async def list_projects(
-        self, search: str = "", per_page: int = 50
-    ) -> list[GitLabProject]:
+    async def list_projects(self, search: str = "", per_page: int = 50) -> list[GitLabProject]:
         params: dict = {
             "per_page": per_page,
             "order_by": "name",
@@ -130,9 +128,7 @@ class GitLabClient:
             for p in resp.json()
         ]
 
-    async def list_branches(
-        self, project_id: int | str, per_page: int = 100
-    ) -> list[GitLabBranch]:
+    async def list_branches(self, project_id: int | str, per_page: int = 100) -> list[GitLabBranch]:
         pid = quote(str(project_id), safe="")
         resp = await self._client.get(
             f"{self._base}/api/v4/projects/{pid}/repository/branches",
@@ -154,9 +150,7 @@ class GitLabClient:
 
     async def get_mr(self, project_id: int | str, mr_iid: int) -> MRInfo:
         pid = quote(str(project_id), safe="")
-        resp = await self._client.get(
-            f"{self._base}/api/v4/projects/{pid}/merge_requests/{mr_iid}"
-        )
+        resp = await self._client.get(f"{self._base}/api/v4/projects/{pid}/merge_requests/{mr_iid}")
         resp.raise_for_status()
         d = resp.json()
         return MRInfo(
@@ -217,9 +211,7 @@ class GitLabClient:
     # Comments
     # ------------------------------------------------------------------
 
-    async def post_mr_note(
-        self, project_id: int | str, mr_iid: int, body: str
-    ) -> None:
+    async def post_mr_note(self, project_id: int | str, mr_iid: int, body: str) -> None:
         pid = quote(str(project_id), safe="")
         resp = await self._client.post(
             f"{self._base}/api/v4/projects/{pid}/merge_requests/{mr_iid}/notes",

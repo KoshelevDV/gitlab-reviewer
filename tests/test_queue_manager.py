@@ -1,10 +1,12 @@
 """Tests for QueueManager — enqueue, dedup, concurrency, status."""
+
 from __future__ import annotations
 
 import asyncio
 from unittest.mock import AsyncMock
 
 import pytest
+
 from src.queue_manager import QueueManager, ReviewJob
 
 
@@ -16,7 +18,6 @@ async def qm():
 
 
 class TestEnqueue:
-
     async def test_enqueue_returns_true(self, qm):
         job = ReviewJob(project_id=1, mr_iid=1)
         result = await qm.enqueue(job)
@@ -45,7 +46,6 @@ class TestEnqueue:
 
 
 class TestDedup:
-
     async def test_same_diff_hash_skipped(self, qm):
         j1 = ReviewJob(project_id=1, mr_iid=1, diff_hash="abc")
         j2 = ReviewJob(project_id=1, mr_iid=1, diff_hash="abc")
@@ -82,7 +82,6 @@ class TestDedup:
 
 
 class TestWorkers:
-
     async def test_worker_processes_job(self):
         q = QueueManager(max_concurrent=1, max_size=10)
         processed = []
@@ -137,7 +136,6 @@ class TestWorkers:
 
 
 class TestStatus:
-
     async def test_initial_status(self, qm):
         s = qm.status()
         assert s["pending"] == 0

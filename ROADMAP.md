@@ -381,5 +381,9 @@ Browser ─────────────┤ GET /ui/                     
 | v0.4 | GitLab UI | Соединение ✅, группы/проекты/ветки ✅, auto-approve ✅ | ✅ Done |
 | v0.5 | Queue+Inline | Конкурентность ✅, queue status ✅, dedup persistence ✅ | ✅ Done |
 | v0.5b | Inline Comments | GitLab Discussion API, parse_review_sections, fallback | ✅ Done |
-| v0.6 | Valkey | Distributed queue+cache, multi-instance | 🟢 Low/Optional |
-| v0.7 | Kafka | High-volume event streaming | 💡 Optional |
+| v0.5c | Filters | Branch pattern (glob, comma-sep), author allowlist/skip | ✅ Done |
+| v0.5d | Targets API + Retry | CRUD /api/v1/targets, POST /reviews/{id}/retry, UI Targets tab | ✅ Done |
+| v0.6 | Observability | GET /metrics (Prometheus), GET /health, queue gauge instrumentation | ✅ Done |
+| v0.7 | CI + Notifications | GitHub Actions CI (lint+tests+Docker), Slack/Telegram webhooks | 🔄 In Progress |
+| v0.8 | Valkey | Distributed queue+cache, multi-instance | 📋 Planned |
+| v0.9 | Kafka | High-volume event streaming | 💡 Optional |

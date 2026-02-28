@@ -1,15 +1,19 @@
 """Tests for POST /api/v1/reviews/{id}/retry endpoint."""
+
 from __future__ import annotations
 
-import pytest
 from src.db import ReviewRecord
 
 
 async def _seed(db, status: str = "error", mr_iid: int = 1, **kwargs) -> ReviewRecord:
     rec = ReviewRecord(
-        project_id="42", mr_iid=mr_iid, status=status,
-        mr_title="MR", author="alice",
-        source_branch="feature", target_branch="main",
+        project_id="42",
+        mr_iid=mr_iid,
+        status=status,
+        mr_title="MR",
+        author="alice",
+        source_branch="feature",
+        target_branch="main",
         **kwargs,
     )
     await db.save_review(rec)
@@ -17,7 +21,6 @@ async def _seed(db, status: str = "error", mr_iid: int = 1, **kwargs) -> ReviewR
 
 
 class TestRetryEndpoint:
-
     async def test_retry_error_review_returns_200(self, app, db):
         rec = await _seed(db, status="error")
         r = await app.post(f"/api/v1/reviews/{rec.id}/retry")

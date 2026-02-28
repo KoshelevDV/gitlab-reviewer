@@ -1,16 +1,21 @@
 """Tests for /api/v1/reviews — list, stats, recent, get by id."""
+
 from __future__ import annotations
 
-import pytest
 from src.db import ReviewRecord
 
 
 async def _seed(db, **kwargs) -> ReviewRecord:
     defaults = dict(
-        project_id="42", mr_iid=1, status="posted",
-        mr_title="MR title", author="alice",
-        source_branch="feature", target_branch="main",
-        review_text="LGTM", prompt_names=["base"],
+        project_id="42",
+        mr_iid=1,
+        status="posted",
+        mr_title="MR title",
+        author="alice",
+        source_branch="feature",
+        target_branch="main",
+        review_text="LGTM",
+        prompt_names=["base"],
     )
     defaults.update(kwargs)
     rec = ReviewRecord(**defaults)
@@ -19,7 +24,6 @@ async def _seed(db, **kwargs) -> ReviewRecord:
 
 
 class TestListReviews:
-
     async def test_empty_returns_zero(self, app):
         r = await app.get("/api/v1/reviews")
         assert r.status_code == 200
@@ -84,7 +88,6 @@ class TestListReviews:
 
 
 class TestGetReview:
-
     async def test_get_by_id_returns_review(self, app, db):
         rec = await _seed(db, review_text="Full review text here")
         r = await app.get(f"/api/v1/reviews/{rec.id}")
@@ -102,7 +105,6 @@ class TestGetReview:
 
 
 class TestStats:
-
     async def test_stats_empty(self, app):
         r = await app.get("/api/v1/reviews/stats")
         assert r.status_code == 200
@@ -124,7 +126,6 @@ class TestStats:
 
 
 class TestRecent:
-
     async def test_recent_returns_list(self, app, db):
         for i in range(5):
             await _seed(db, mr_iid=i + 1)

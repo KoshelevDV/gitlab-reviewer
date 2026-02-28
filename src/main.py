@@ -9,6 +9,7 @@ Startup order:
   5. Start queue workers
   6. Mount routes (API + Web UI)
 """
+
 from __future__ import annotations
 
 import logging
@@ -38,7 +39,8 @@ from .db import Database
 from .log_buffer import setup_log_buffer
 from .prompt_engine import PromptEngine
 from .queue_manager import QueueManager
-from .reviewer import Reviewer, set_database as reviewer_set_db
+from .reviewer import Reviewer
+from .reviewer import set_database as reviewer_set_db
 from .ui.router import mount_ui
 from .webhook import make_webhook_router
 from .webhook import set_queue_manager as webhook_set_queue
@@ -58,7 +60,9 @@ def create_app() -> FastAPI:
 
     logger.info(
         "gitlab-reviewer starting (model=%s, providers=%d, max_concurrent=%d)",
-        cfg.model.name, len(cfg.providers), cfg.queue.max_concurrent,
+        cfg.model.name,
+        len(cfg.providers),
+        cfg.queue.max_concurrent,
     )
 
     # ----------------------------------------------------------------
@@ -81,6 +85,7 @@ def create_app() -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):  # type: ignore[no-untyped-def]
         import asyncio
+
         # Startup
         log_buf.set_loop(asyncio.get_running_loop())
         await db.init()

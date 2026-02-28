@@ -7,15 +7,20 @@ Design:
     so no more than max_concurrent reviews run at the same time.
   - Dedup: before enqueue, check (project_id, mr_iid, diff_hash) in cache.
 """
+
 from __future__ import annotations
 
 import asyncio
 import logging
 import time
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
-from typing import Callable, Coroutine
+from typing import TYPE_CHECKING
 
 from . import metrics as _metrics
+
+if TYPE_CHECKING:
+    from .db import Database
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +62,8 @@ class QueueManager:
         if job.diff_hash and self._is_seen(key):
             logger.info(
                 "Dedup: skipping project=%s MR!%d (diff hash already seen)",
-                job.project_id, job.mr_iid,
+                job.project_id,
+                job.mr_iid,
             )
             _metrics.queue_rejected_total.inc()
             return False
@@ -71,13 +77,18 @@ class QueueManager:
             _metrics.queue_pending.set(self._pending)
             logger.info(
                 "Enqueued job #%d: project=%s MR!%d (queue depth=%d)",
-                job.id, job.project_id, job.mr_iid, self._pending,
+                job.id,
+                job.project_id,
+                job.mr_iid,
+                self._pending,
             )
             return True
         except asyncio.QueueFull:
             logger.warning(
                 "Queue full (max_size=%d), dropping job project=%s MR!%d",
-                self._queue.maxsize, job.project_id, job.mr_iid,
+                self._queue.maxsize,
+                job.project_id,
+                job.mr_iid,
             )
             _metrics.queue_rejected_total.inc()
             return False
@@ -90,9 +101,7 @@ class QueueManager:
         """Start worker coroutines. Must be called from async context (e.g. app startup)."""
         count = num_workers or self._max_concurrent
         for i in range(count):
-            task = asyncio.ensure_future(
-                self._worker(review_fn)
-            )
+            task = asyncio.ensure_future(self._worker(review_fn))
             task.set_name(f"reviewer-worker-{i}")
             self._workers.append(task)
         logger.info("Started %d review worker(s)", count)
@@ -129,7 +138,9 @@ class QueueManager:
                 try:
                     logger.info(
                         "Worker starting job #%d: project=%s MR!%d",
-                        job.id, job.project_id, job.mr_iid,
+                        job.id,
+                        job.project_id,
+                        job.mr_iid,
                     )
                     await review_fn(job)
                     self._done += 1
@@ -137,7 +148,9 @@ class QueueManager:
                     self._errors += 1
                     logger.exception(
                         "Worker error on job #%d: project=%s MR!%d",
-                        job.id, job.project_id, job.mr_iid,
+                        job.id,
+                        job.project_id,
+                        job.mr_iid,
                     )
                 finally:
                     self._active -= 1
@@ -146,6 +159,7 @@ class QueueManager:
 
     def _is_seen(self, key: tuple) -> bool:
         import time
+
         ts = self._seen.get(key)
         if ts is None:
             return False
@@ -154,7 +168,7 @@ class QueueManager:
             return False
         return True
 
-    async def load_seen_from_db(self, db: "Database") -> int:  # type: ignore[name-defined]
+    async def load_seen_from_db(self, db: Database) -> int:  # type: ignore[name-defined]
         """
         Restore dedup cache from the last 7 days of DB records on startup.
         Prevents re-reviewing the same MR diff after a service restart.
@@ -174,5 +188,6 @@ class QueueManager:
 
     def mark_seen(self, project_id: int | str, mr_iid: int, diff_hash: str) -> None:
         import time
+
         key = (str(project_id), mr_iid, diff_hash)
         self._seen[key] = time.monotonic()

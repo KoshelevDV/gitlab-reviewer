@@ -1,4 +1,5 @@
 """Reviews API — /api/v1/reviews"""
+
 from __future__ import annotations
 
 from dataclasses import asdict
@@ -35,15 +36,20 @@ async def list_reviews(
     if limit > 100:
         limit = 100
     records, total = await _db.list_reviews(
-        project_id=project_id, status=status, author=author,
-        limit=limit, offset=offset,
+        project_id=project_id,
+        status=status,
+        author=author,
+        limit=limit,
+        offset=offset,
     )
-    return JSONResponse({
-        "items": [_serialize(r) for r in records],
-        "total": total,
-        "limit": limit,
-        "offset": offset,
-    })
+    return JSONResponse(
+        {
+            "items": [_serialize(r) for r in records],
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+        }
+    )
 
 
 @router.get("/stats")
@@ -90,6 +96,7 @@ async def retry_review(review_id: int) -> JSONResponse:
         )
 
     from ..queue_manager import ReviewJob
+
     job = ReviewJob(project_id=rec.project_id, mr_iid=rec.mr_iid)
     enqueued = await _queue.enqueue(job)
     if not enqueued:
@@ -99,7 +106,7 @@ async def retry_review(review_id: int) -> JSONResponse:
 
 
 def _serialize(rec) -> dict:  # type: ignore[no-untyped-def]
-    from dataclasses import asdict
+
     d = asdict(rec)
     d["auto_approved"] = bool(d["auto_approved"])
     # Trim review_text for list views (full text available via GET /{id})

@@ -1,4 +1,5 @@
 """Health check — GET /health"""
+
 from __future__ import annotations
 
 import time
@@ -49,6 +50,7 @@ async def health_check() -> JSONResponse:
 
     # Config check
     from ..config import get_config
+
     try:
         cfg = get_config()
         active = cfg.active_provider()

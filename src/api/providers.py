@@ -1,4 +1,5 @@
 """Providers API — /api/v1/providers"""
+
 from __future__ import annotations
 
 import httpx
@@ -89,9 +90,7 @@ async def get_models(provider_id: str) -> JSONResponse:
     if not provider:
         raise HTTPException(status_code=404, detail=f"Provider '{provider_id}' not found")
 
-    models: list[ModelInfo] = await list_models(
-        provider.url, provider.type.value, provider.api_key
-    )
+    models: list[ModelInfo] = await list_models(provider.url, provider.type.value, provider.api_key)
     return JSONResponse([{"id": m.id, "context_length": m.context_length} for m in models])
 
 
@@ -103,11 +102,11 @@ async def get_model_info_endpoint(provider_id: str, model_name: str) -> JSONResp
     if not provider:
         raise HTTPException(status_code=404, detail=f"Provider '{provider_id}' not found")
 
-    info = await get_model_info(
-        provider.url, model_name, provider.type.value, provider.api_key
+    info = await get_model_info(provider.url, model_name, provider.type.value, provider.api_key)
+    return JSONResponse(
+        {
+            "id": info.id,
+            "context_length": info.context_length,
+            "params": info.params,
+        }
     )
-    return JSONResponse({
-        "id": info.id,
-        "context_length": info.context_length,
-        "params": info.params,
-    })

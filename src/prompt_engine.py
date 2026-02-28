@@ -12,6 +12,7 @@ Prompt injection prevention
    stripped from untrusted input before it reaches the LLM.
 5. Diff size is hard-capped so a malicious large diff cannot exceed context.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -27,9 +28,9 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 _INJECTION_PATTERNS: list[re.Pattern] = [
     re.compile(r"<\|(?:system|user|assistant|im_start|im_end)[^|]*\|>", re.I),  # Qwen/ChatML
-    re.compile(r"\[INST\]|\[/INST\]", re.I),           # Llama 2
-    re.compile(r"<<SYS>>|<</SYS>>", re.I),              # Llama 2 system
-    re.compile(r"<s>|</s>", re.I),                       # BOS/EOS tokens
+    re.compile(r"\[INST\]|\[/INST\]", re.I),  # Llama 2
+    re.compile(r"<<SYS>>|<</SYS>>", re.I),  # Llama 2 system
+    re.compile(r"<s>|</s>", re.I),  # BOS/EOS tokens
     re.compile(r"###\s*(?:System|Human|Assistant)\s*:", re.I),  # Alpaca-style
     re.compile(r"\bIGNORE\s+(?:ALL\s+)?(?:PREVIOUS|ABOVE)\b", re.I),  # classic injection
     re.compile(r"\bDISREGARD\s+(?:ALL\s+)?(?:PREVIOUS|ABOVE)\b", re.I),
@@ -106,7 +107,10 @@ class PromptEngine:
 
         if len(result) > max_chars:
             result = result[:max_chars]
-            result += f"\n\n[... diff truncated at {max_chars} chars; original was {original_len} chars ...]"
+            result += (
+                f"\n\n[... diff truncated at {max_chars} chars;"
+                f" original was {original_len} chars ...]"
+            )
 
         if stripped_count:
             logger.warning(

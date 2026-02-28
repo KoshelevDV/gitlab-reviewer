@@ -1,7 +1,7 @@
 """Tests for GET /health and GET /metrics endpoints."""
+
 from __future__ import annotations
 
-import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
@@ -9,21 +9,22 @@ from httpx import ASGITransport, AsyncClient
 @pytest_asyncio.fixture
 async def health_app(db):
     """Test app with health + metrics routers wired."""
-    import src.config as cfg_mod
-    from src.config import AppConfig, Provider, ModelConfig, GitLabConfig
     from fastapi import FastAPI
+
+    import src.config as cfg_mod
     from src.api.health import router as health_router
-    from src.api.health import set_database, set_queue_manager as hq
+    from src.api.health import set_database
+    from src.api.health import set_queue_manager as hq
     from src.api.metrics_api import router as metrics_router
+    from src.config import AppConfig, GitLabConfig, ModelConfig, Provider
     from src.queue_manager import QueueManager
 
     cfg = AppConfig(
         providers=[
-            Provider(id="p1", name="Ollama", type="ollama",
-                     url="http://fake:11434", active=True)
+            Provider(id="p1", name="Ollama", type="ollama", url="http://fake:11434", active=True)
         ],
         model=ModelConfig(provider_id="p1", name="test:7b"),
-        gitlab=GitLabConfig(url="http://fake-gl", webhook_secret="s"),
+        gitlab=GitLabConfig(url="http://fake-gl", webhook_secret="s"),  # noqa: S106
     )
     cfg_mod._config = cfg
 
@@ -44,7 +45,6 @@ async def health_app(db):
 
 
 class TestHealthEndpoint:
-
     async def test_health_returns_200_when_ok(self, health_app):
         r = await health_app.get("/health")
         assert r.status_code == 200
@@ -74,11 +74,12 @@ class TestHealthEndpoint:
 
     async def test_health_without_db_returns_503(self):
         """If DB is not set, health should return degraded/503."""
+        from fastapi import FastAPI
+
         import src.api.health as health_mod
         import src.config as cfg_mod
-        from src.config import AppConfig
-        from fastapi import FastAPI
         from src.api.health import router as health_router
+        from src.config import AppConfig
 
         # Save and unset DB
         original_db = health_mod._db
@@ -105,7 +106,6 @@ class TestHealthEndpoint:
 
 
 class TestMetricsEndpoint:
-
     async def test_metrics_returns_200(self, health_app):
         r = await health_app.get("/metrics")
         assert r.status_code == 200
@@ -126,12 +126,12 @@ class TestMetricsEndpoint:
     async def test_metrics_are_zero_initially(self, health_app):
         r = await health_app.get("/metrics")
         body = r.text
-        # glr_reviews_total should have no label samples initially (counter starts at 0 on first use)
-        # At minimum, histogram bucket lines should appear
+        # At minimum, histogram bucket lines should appear (counter starts at 0 on first use)
         assert "glr_llm_duration_seconds_bucket" in body
 
     async def test_metrics_record_review_increments_counter(self, health_app):
         from src import metrics as m
+
         m.record_review(status="posted", inline_count=2, auto_approved=True)
         r = await health_app.get("/metrics")
         body = r.text
@@ -141,26 +141,30 @@ class TestMetricsEndpoint:
 
 
 class TestMetricsModule:
-
     def test_render_metrics_returns_bytes_and_content_type(self):
         from src.metrics import render_metrics
+
         body, ct = render_metrics()
         assert isinstance(body, bytes)
         assert "text/plain" in ct
 
     def test_record_review_does_not_raise(self):
         from src import metrics as m
+
         m.record_review(status="skipped")
         m.record_review(status="error", inline_count=0, auto_approved=False)
         m.record_review(status="posted", inline_count=3, auto_approved=True)
 
     def test_queue_pending_gauge_can_be_set(self):
-        from src.metrics import queue_pending, queue_active
+        from src.metrics import queue_active, queue_pending
+
         queue_pending.set(5)
         queue_active.set(2)
 
     def test_llm_duration_histogram_time_context(self):
         import time
+
         from src.metrics import llm_duration_seconds
+
         with llm_duration_seconds.time():
             time.sleep(0.001)

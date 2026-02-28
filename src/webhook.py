@@ -6,6 +6,7 @@ Security:
   - Only MR events trigger reviews (open / update / reopen)
   - Reviews dispatched to QueueManager (not run inline)
 """
+
 from __future__ import annotations
 
 import hmac

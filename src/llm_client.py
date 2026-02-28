@@ -1,9 +1,10 @@
 """LLM client — OpenAI-compatible chat completions + model discovery."""
+
 from __future__ import annotations
 
 import logging
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
-from typing import AsyncIterator
 
 import httpx
 
@@ -64,9 +65,8 @@ async def get_model_info(
                 if resp.status_code == 200:
                     d = resp.json()
                     model_meta = d.get("model_info", {})
-                    info.context_length = (
-                        model_meta.get("llama.context_length")
-                        or model_meta.get("context_length")
+                    info.context_length = model_meta.get("llama.context_length") or model_meta.get(
+                        "context_length"
                     )
                     info.params = {
                         "architecture": model_meta.get("general.architecture", ""),
@@ -86,9 +86,7 @@ class LLMClient:
     the system prompt is sealed, untrusted content only appears in the user turn.
     """
 
-    def __init__(
-        self, base_url: str, model: str, timeout: int = 300, api_key: str = ""
-    ) -> None:
+    def __init__(self, base_url: str, model: str, timeout: int = 300, api_key: str = "") -> None:
         self._base = base_url.rstrip("/")
         self._model = model
         headers = {}
@@ -138,9 +136,7 @@ class LLMClient:
             "options": {"temperature": temperature},
             "messages": payload["messages"],
         }
-        resp = await self._client.post(
-            f"{self._base}/api/chat", json=ollama_payload
-        )
+        resp = await self._client.post(f"{self._base}/api/chat", json=ollama_payload)
         resp.raise_for_status()
         data = resp.json()
         return data["message"]["content"]
@@ -168,6 +164,7 @@ class LLMClient:
             async for line in resp.aiter_lines():
                 if line.startswith("data: ") and line != "data: [DONE]":
                     import json
+
                     chunk = json.loads(line[6:])
                     delta = chunk["choices"][0]["delta"].get("content", "")
                     if delta:

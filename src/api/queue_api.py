@@ -1,4 +1,5 @@
 """Queue status API — /api/v1/queue"""
+
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
@@ -44,6 +45,7 @@ async def trigger_review(body: TriggerBody) -> JSONResponse:
         raise HTTPException(status_code=503, detail="Queue not available")
 
     from ..queue_manager import ReviewJob
+
     job = ReviewJob(project_id=body.project_id, mr_iid=body.mr_iid)
     enqueued = await _queue_manager.enqueue(job)
     if not enqueued:

@@ -6,11 +6,12 @@ Two layers:
   2. env vars    — secrets only (GLR_GITLAB_TOKEN, GLR_GITLAB_PASSWORD,
                    GLR_WEBHOOK_SECRET); override yaml values when set
 """
+
 from __future__ import annotations
 
 import os
 import shutil
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
@@ -24,7 +25,8 @@ CONFIG_PATH = Path(os.getenv("GLR_CONFIG_FILE", "config.yml"))
 # Sub-models
 # ---------------------------------------------------------------------------
 
-class ProviderType(str, Enum):
+
+class ProviderType(StrEnum):
     ollama = "ollama"
     llamacpp = "llamacpp"
     openai_compat = "openai_compat"
@@ -43,21 +45,21 @@ class ModelConfig(BaseModel):
     provider_id: str = ""
     name: str = ""
     temperature: float = 0.2
-    context_size: int | None = None   # None = model default
+    context_size: int | None = None  # None = model default
     max_tokens: int = 4096
-    inline_comments: bool = True      # post findings as GitLab inline diff comments
+    inline_comments: bool = True  # post findings as GitLab inline diff comments
 
 
 class GitLabConfig(BaseModel):
     url: str = "https://gitlab.com"
-    auth_type: str = "token"          # token | basic
+    auth_type: str = "token"  # token | basic
     # secrets: never stored in yaml; come from env vars at runtime
     tls_verify: bool = True
     webhook_secret: str = ""
 
 
 class BranchRules(BaseModel):
-    pattern: str = "*"                # glob; comma-separated = OR
+    pattern: str = "*"  # glob; comma-separated = OR
     protected_only: bool = False
 
 
@@ -66,18 +68,18 @@ class PromptsOverride(BaseModel):
 
 
 class ReviewTarget(BaseModel):
-    type: str = "all"                 # group | project | all
+    type: str = "all"  # group | project | all
     id: str = ""
     branches: BranchRules = Field(default_factory=BranchRules)
     auto_approve: bool = False
     prompts: PromptsOverride = Field(default_factory=PromptsOverride)
     # Author filtering (empty list = no restriction)
     author_allowlist: list[str] = []  # only review MRs from these authors
-    skip_authors: list[str] = []      # always skip MRs from these authors (bots, CI)
+    skip_authors: list[str] = []  # always skip MRs from these authors (bots, CI)
 
 
 class QueueConfig(BaseModel):
-    backend: str = "memory"           # memory | valkey
+    backend: str = "memory"  # memory | valkey
     max_concurrent: int = 3
     max_queue_size: int = 100
     valkey_url: str = "redis://localhost:6379"
@@ -99,7 +101,7 @@ class UIConfig(BaseModel):
 
 
 class ServerConfig(BaseModel):
-    host: str = "0.0.0.0"
+    host: str = "0.0.0.0"  # noqa: S104
     port: int = 8000
     log_level: str = "info"
 
@@ -107,6 +109,7 @@ class ServerConfig(BaseModel):
 # ---------------------------------------------------------------------------
 # Root config
 # ---------------------------------------------------------------------------
+
 
 class AppConfig(BaseModel):
     providers: list[Provider] = Field(default_factory=list)
@@ -124,7 +127,7 @@ class AppConfig(BaseModel):
     _gitlab_password: str = ""
 
     @model_validator(mode="after")
-    def _inject_secrets(self) -> "AppConfig":
+    def _inject_secrets(self) -> AppConfig:
         token = os.getenv("GLR_GITLAB_TOKEN", "")
         if token:
             object.__setattr__(self, "_gitlab_token", token)
@@ -154,6 +157,7 @@ class AppConfig(BaseModel):
 # ---------------------------------------------------------------------------
 # Loader / saver
 # ---------------------------------------------------------------------------
+
 
 def load_config(path: Path = CONFIG_PATH) -> AppConfig:
     if not path.exists():

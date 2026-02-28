@@ -2,6 +2,7 @@
 
 Addresses targets by composite key "{type}:{id}" (e.g. "project:42", "all:").
 """
+
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
@@ -19,10 +20,7 @@ def _key(t: ReviewTarget) -> str:
 @router.get("")
 async def list_targets() -> JSONResponse:
     cfg = get_config()
-    return JSONResponse([
-        {**t.model_dump(), "_key": _key(t)}
-        for t in cfg.review_targets
-    ])
+    return JSONResponse([{**t.model_dump(), "_key": _key(t)} for t in cfg.review_targets])
 
 
 @router.post("")
@@ -30,9 +28,7 @@ async def add_target(body: ReviewTarget) -> JSONResponse:
     cfg = get_config()
     key = _key(body)
     if any(_key(t) == key for t in cfg.review_targets):
-        raise HTTPException(
-            status_code=409, detail=f"Target '{key}' already exists"
-        )
+        raise HTTPException(status_code=409, detail=f"Target '{key}' already exists")
     cfg.review_targets.append(body)
     save_config(cfg, CONFIG_PATH)
     reload_config(CONFIG_PATH)

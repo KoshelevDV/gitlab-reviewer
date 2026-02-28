@@ -4,6 +4,7 @@ Prometheus metrics for gitlab-reviewer.
 All metrics are registered in a dedicated CollectorRegistry so they don't
 conflict with pytest's default registry during tests.
 """
+
 from __future__ import annotations
 
 from prometheus_client import (
@@ -81,6 +82,7 @@ queue_rejected_total = Counter(
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
+
 
 def record_review(status: str, inline_count: int = 0, auto_approved: bool = False) -> None:
     """Call after a review completes (any status)."""

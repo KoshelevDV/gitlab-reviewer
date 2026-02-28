@@ -1,4 +1,5 @@
 """Serve Web UI static files."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -24,4 +25,5 @@ def mount_ui(app) -> None:  # type: ignore[no-untyped-def]
     @app.get("/", include_in_schema=False)
     async def root_redirect():  # type: ignore[return]
         from fastapi.responses import RedirectResponse
+
         return RedirectResponse(url="/ui/")

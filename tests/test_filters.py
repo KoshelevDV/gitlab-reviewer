@@ -1,25 +1,32 @@
 """Tests for reviewer filter logic: branch rules, author rules."""
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, patch
 
-import pytest
-
 from src.config import AppConfig, BranchRules, GitLabConfig, ModelConfig, Provider, ReviewTarget
 from src.gitlab_client import FileDiff, GitLabBranch, MRInfo
-from src.queue_manager import QueueManager, ReviewJob
+from src.queue_manager import ReviewJob
 from src.reviewer import Reviewer, _check_author_rules, _check_branch_rules, set_database
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _mr(target_branch: str = "main", source_branch: str = "feature", author: str = "alice") -> MRInfo:
+
+def _mr(
+    target_branch: str = "main", source_branch: str = "feature", author: str = "alice"
+) -> MRInfo:
     return MRInfo(
-        project_id=10, iid=1, title="T", description="",
-        author=author, source_branch=source_branch,
-        target_branch=target_branch, is_draft=False, web_url="",
+        project_id=10,
+        iid=1,
+        title="T",
+        description="",
+        author=author,
+        source_branch=source_branch,
+        target_branch=target_branch,
+        is_draft=False,
+        web_url="",
     )
 
 
@@ -31,8 +38,14 @@ def _gitlab_mock(protected: bool = True) -> AsyncMock:
     gl = AsyncMock()
     gl.get_mr.return_value = _mr()
     gl.get_diffs.return_value = [
-        FileDiff(old_path="a.py", new_path="a.py", diff="+x=1",
-                 new_file=False, deleted_file=False, renamed_file=False)
+        FileDiff(
+            old_path="a.py",
+            new_path="a.py",
+            diff="+x=1",
+            new_file=False,
+            deleted_file=False,
+            renamed_file=False,
+        )
     ]
     gl.list_branches.return_value = [GitLabBranch(name="main", protected=protected)]
     gl.post_mr_note = AsyncMock()
@@ -53,6 +66,7 @@ def _cfg(target: ReviewTarget) -> AppConfig:
 # ---------------------------------------------------------------------------
 # _check_branch_rules (pure logic, no async call needed for pattern tests)
 # ---------------------------------------------------------------------------
+
 
 class TestCheckBranchRules:
     """Unit tests for _check_branch_rules (branch pattern + protected_only)."""
@@ -139,8 +153,8 @@ class TestCheckBranchRules:
 # _check_author_rules (pure sync, no mocks needed)
 # ---------------------------------------------------------------------------
 
-class TestCheckAuthorRules:
 
+class TestCheckAuthorRules:
     def test_empty_allowlist_allows_everyone(self):
         target = _target()  # no allowlist/skip
         assert _check_author_rules(_mr(author="alice"), target) is None
@@ -182,8 +196,8 @@ class TestCheckAuthorRules:
 # Integration — review_job skips correctly
 # ---------------------------------------------------------------------------
 
-class TestReviewJobFilters:
 
+class TestReviewJobFilters:
     async def test_branch_mismatch_skips_job(self, db, prompt_engine, queue):
         target = _target(branches=BranchRules(pattern="main"))
         cfg = _cfg(target)
@@ -196,9 +210,11 @@ class TestReviewJobFilters:
 
         set_database(db)
         reviewer = Reviewer(prompts=prompt_engine, queue=queue)
-        with patch("src.reviewer._make_gitlab_client", return_value=gl), \
-             patch("src.reviewer._make_llm_client", return_value=llm), \
-             patch("src.reviewer.get_config", return_value=cfg):
+        with (
+            patch("src.reviewer._make_gitlab_client", return_value=gl),
+            patch("src.reviewer._make_llm_client", return_value=llm),
+            patch("src.reviewer.get_config", return_value=cfg),
+        ):
             await reviewer.review_job(ReviewJob(project_id=10, mr_iid=1))
 
         records, _ = await db.list_reviews()
@@ -219,9 +235,11 @@ class TestReviewJobFilters:
 
         set_database(db)
         reviewer = Reviewer(prompts=prompt_engine, queue=queue)
-        with patch("src.reviewer._make_gitlab_client", return_value=gl), \
-             patch("src.reviewer._make_llm_client", return_value=llm), \
-             patch("src.reviewer.get_config", return_value=cfg):
+        with (
+            patch("src.reviewer._make_gitlab_client", return_value=gl),
+            patch("src.reviewer._make_llm_client", return_value=llm),
+            patch("src.reviewer.get_config", return_value=cfg),
+        ):
             await reviewer.review_job(ReviewJob(project_id=10, mr_iid=1))
 
         records, _ = await db.list_reviews()
@@ -239,9 +257,11 @@ class TestReviewJobFilters:
 
         set_database(db)
         reviewer = Reviewer(prompts=prompt_engine, queue=queue)
-        with patch("src.reviewer._make_gitlab_client", return_value=gl), \
-             patch("src.reviewer._make_llm_client", return_value=llm), \
-             patch("src.reviewer.get_config", return_value=cfg):
+        with (
+            patch("src.reviewer._make_gitlab_client", return_value=gl),
+            patch("src.reviewer._make_llm_client", return_value=llm),
+            patch("src.reviewer.get_config", return_value=cfg),
+        ):
             await reviewer.review_job(ReviewJob(project_id=10, mr_iid=1))
 
         records, _ = await db.list_reviews()
@@ -261,9 +281,11 @@ class TestReviewJobFilters:
 
         set_database(db)
         reviewer = Reviewer(prompts=prompt_engine, queue=queue)
-        with patch("src.reviewer._make_gitlab_client", return_value=gl), \
-             patch("src.reviewer._make_llm_client", return_value=llm), \
-             patch("src.reviewer.get_config", return_value=cfg):
+        with (
+            patch("src.reviewer._make_gitlab_client", return_value=gl),
+            patch("src.reviewer._make_llm_client", return_value=llm),
+            patch("src.reviewer.get_config", return_value=cfg),
+        ):
             await reviewer.review_job(ReviewJob(project_id=10, mr_iid=1))
 
         records, _ = await db.list_reviews()
@@ -282,9 +304,11 @@ class TestReviewJobFilters:
 
         set_database(db)
         reviewer = Reviewer(prompts=prompt_engine, queue=queue)
-        with patch("src.reviewer._make_gitlab_client", return_value=gl), \
-             patch("src.reviewer._make_llm_client", return_value=llm), \
-             patch("src.reviewer.get_config", return_value=cfg):
+        with (
+            patch("src.reviewer._make_gitlab_client", return_value=gl),
+            patch("src.reviewer._make_llm_client", return_value=llm),
+            patch("src.reviewer.get_config", return_value=cfg),
+        ):
             await reviewer.review_job(ReviewJob(project_id=10, mr_iid=1))
 
         records, _ = await db.list_reviews()
@@ -307,9 +331,11 @@ class TestReviewJobFilters:
 
         set_database(db)
         reviewer = Reviewer(prompts=prompt_engine, queue=queue)
-        with patch("src.reviewer._make_gitlab_client", return_value=gl), \
-             patch("src.reviewer._make_llm_client", return_value=llm), \
-             patch("src.reviewer.get_config", return_value=cfg):
+        with (
+            patch("src.reviewer._make_gitlab_client", return_value=gl),
+            patch("src.reviewer._make_llm_client", return_value=llm),
+            patch("src.reviewer.get_config", return_value=cfg),
+        ):
             await reviewer.review_job(ReviewJob(project_id=10, mr_iid=1))
 
         records, _ = await db.list_reviews()

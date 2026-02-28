@@ -5,19 +5,20 @@ In-memory log buffer + logging Handler.
   - Broadcasts each new log line to all active WebSocket subscribers.
   - Thread-safe via asyncio.Queue per subscriber.
 """
+
 from __future__ import annotations
 
 import asyncio
 import logging
 from collections import deque
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 
 class _LogEntry:
     __slots__ = ("ts", "level", "name", "message", "formatted")
 
     def __init__(self, record: logging.LogRecord, formatted: str) -> None:
-        self.ts = datetime.fromtimestamp(record.created, tz=timezone.utc).isoformat()
+        self.ts = datetime.fromtimestamp(record.created, tz=UTC).isoformat()
         self.level = record.levelname
         self.name = record.name
         self.message = record.getMessage()
@@ -25,12 +26,15 @@ class _LogEntry:
 
     def as_json(self) -> str:
         import json
-        return json.dumps({
-            "ts": self.ts,
-            "level": self.level,
-            "logger": self.name,
-            "msg": self.message,
-        })
+
+        return json.dumps(
+            {
+                "ts": self.ts,
+                "level": self.level,
+                "logger": self.name,
+                "msg": self.message,
+            }
+        )
 
 
 class LogBuffer:
@@ -88,8 +92,6 @@ def setup_log_buffer(maxlen: int = 1000) -> LogBuffer:
     """Attach BufferHandler to the root logger and return the buffer."""
     buf = LogBuffer(maxlen=maxlen)
     handler = BufferHandler(buf)
-    handler.setFormatter(
-        logging.Formatter("%(asctime)s %(levelname)s %(name)s — %(message)s")
-    )
+    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s — %(message)s"))
     logging.getLogger().addHandler(handler)
     return buf

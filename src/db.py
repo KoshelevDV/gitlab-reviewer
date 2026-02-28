@@ -10,12 +10,13 @@ Usage:
   review_id = await db.save_review(record)
   rows, total = await db.list_reviews(limit=20, offset=0)
 """
+
 from __future__ import annotations
 
 import json
 import logging
-from dataclasses import asdict, dataclass, field
-from datetime import datetime, timedelta, timezone
+from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -53,7 +54,7 @@ CREATE INDEX IF NOT EXISTS idx_reviews_status    ON reviews(status);
 class ReviewRecord:
     project_id: str
     mr_iid: int
-    status: str                    # posted | skipped | error | dry_run
+    status: str  # posted | skipped | error | dry_run
     mr_title: str = ""
     mr_url: str = ""
     author: str = ""
@@ -64,13 +65,13 @@ class ReviewRecord:
     review_text: str = ""
     skip_reason: str = ""
     auto_approved: bool = False
-    inline_count: int = 0          # number of inline GitLab discussion comments posted
+    inline_count: int = 0  # number of inline GitLab discussion comments posted
     id: int = 0
     created_at: str = ""
 
     def __post_init__(self) -> None:
         if not self.created_at:
-            self.created_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            self.created_at = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 class Database:
@@ -122,17 +123,33 @@ class Database:
                 inline_count, created_at)
                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
-                str(rec.project_id), rec.mr_iid, rec.mr_title, rec.mr_url,
-                rec.author, rec.source_branch, rec.target_branch,
-                rec.diff_hash, json.dumps(rec.prompt_names),
-                rec.review_text, rec.status, rec.skip_reason,
-                int(rec.auto_approved), rec.inline_count, rec.created_at,
+                str(rec.project_id),
+                rec.mr_iid,
+                rec.mr_title,
+                rec.mr_url,
+                rec.author,
+                rec.source_branch,
+                rec.target_branch,
+                rec.diff_hash,
+                json.dumps(rec.prompt_names),
+                rec.review_text,
+                rec.status,
+                rec.skip_reason,
+                int(rec.auto_approved),
+                rec.inline_count,
+                rec.created_at,
             ),
         )
         await self._db.commit()
         rec.id = cursor.lastrowid or 0
-        logger.debug("Saved review id=%d project=%s MR!%d status=%s inline=%d",
-                     rec.id, rec.project_id, rec.mr_iid, rec.status, rec.inline_count)
+        logger.debug(
+            "Saved review id=%d project=%s MR!%d status=%s inline=%d",
+            rec.id,
+            rec.project_id,
+            rec.mr_iid,
+            rec.status,
+            rec.inline_count,
+        )
         return rec.id
 
     # ------------------------------------------------------------------
@@ -141,9 +158,7 @@ class Database:
 
     async def get_review(self, review_id: int) -> ReviewRecord | None:
         assert self._db is not None
-        async with self._db.execute(
-            "SELECT * FROM reviews WHERE id = ?", (review_id,)
-        ) as cur:
+        async with self._db.execute("SELECT * FROM reviews WHERE id = ?", (review_id,)) as cur:
             row = await cur.fetchone()
         return _row_to_record(row) if row else None
 
@@ -171,16 +186,17 @@ class Database:
             params.append(author)
 
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+        # where clause is built from a hardcoded whitelist — not user input
+        count_sql = f"SELECT COUNT(*) FROM reviews {where}"  # noqa: S608
+        list_sql = (
+            f"SELECT * FROM reviews {where}"  # noqa: S608
+            " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+        )
 
-        async with self._db.execute(
-            f"SELECT COUNT(*) FROM reviews {where}", params
-        ) as cur:
+        async with self._db.execute(count_sql, params) as cur:
             total = (await cur.fetchone())[0]
 
-        async with self._db.execute(
-            f"SELECT * FROM reviews {where} ORDER BY created_at DESC LIMIT ? OFFSET ?",
-            params + [limit, offset],
-        ) as cur:
+        async with self._db.execute(list_sql, params + [limit, offset]) as cur:
             rows = await cur.fetchall()
 
         return [_row_to_record(r) for r in rows], total
@@ -210,8 +226,7 @@ class Database:
             rows = await cur.fetchall()
         return [_row_to_record(r) for r in rows]
 
-
-# ---------------------------------------------------------------------------
+    # ---------------------------------------------------------------------------
 
     async def list_diff_hashes(self, hours: int = 168) -> list[tuple[str, int, str]]:
         """

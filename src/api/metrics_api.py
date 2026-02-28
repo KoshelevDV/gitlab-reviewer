@@ -1,4 +1,5 @@
 """Metrics API — GET /metrics (Prometheus format)."""
+
 from __future__ import annotations
 
 from fastapi import APIRouter
