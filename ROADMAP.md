@@ -376,9 +376,9 @@ Browser ─────────────┤ GET /ui/                     
 | Версия | Фаза | Ключевые фичи | Приоритет |
 |--------|------|--------------|-----------|
 | v0.1 | MVP | Webhook, LLM, промпты, dedup | ✅ Done |
-| v0.2 | Web UI | Провайдеры, модели, config API | 🔴 High |
-| v0.3 | Logs+History | Live логи WS, история ревью SQLite | 🔴 High |
-| v0.4 | GitLab UI | Соединение, группы/проекты, ветки, auto-approve | 🟡 Medium |
-| v0.5 | Queue | Конкурентность, queue status, улучшенный dedup | 🟡 Medium |
+| v0.2 | Web UI | Провайдеры, модели, config API | ✅ Done |
+| v0.3 | Logs+History | Live логи WS ✅, история ревью SQLite 📋 | 🔴 High |
+| v0.4 | GitLab UI | Соединение ✅, группы/проекты/ветки ✅, auto-approve 📋 | 🟡 Medium |
+| v0.5 | Queue | Конкурентность ✅, queue status ✅, улучшенный dedup ✅ | ✅ Done |
 | v0.6 | Valkey | Distributed queue+cache, multi-instance | 🟢 Low/Optional |
 | v0.7 | Kafka | High-volume event streaming | 💡 Optional |

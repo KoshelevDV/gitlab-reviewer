@@ -189,8 +189,10 @@ After v0.2: open `http://server:8000/ui/` to configure everything.
 | Phase | Version | Status |
 |-------|---------|--------|
 | MVP: webhook + LLM + prompts | v0.1 | ✅ Done |
-| Web UI: providers, models, config | v0.2 | 📋 Planned |
-| Logs WebSocket + review history | v0.3 | 📋 Planned |
-| GitLab config UI + review targets | v0.4 | 📋 Planned |
-| Queue + concurrency control | v0.5 | 📋 Planned |
+| Web UI: providers, models, config API | v0.2 | ✅ Done |
+| Live logs WebSocket (`/ws/logs`) | v0.2 | ✅ Done |
+| GitLab browse API (groups/projects/branches) | v0.2 | ✅ Done |
+| Queue + concurrency (asyncio.Queue + Semaphore) | v0.2 | ✅ Done |
+| Review history SQLite | v0.3 | 📋 Planned |
+| Auto-approve via GitLab API | v0.4 | 📋 Planned |
 | Valkey distributed backend | v0.6 | 💡 Optional |
