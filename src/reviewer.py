@@ -304,6 +304,7 @@ class Reviewer:
                             remaining_secs,
                         )
                         asyncio.create_task(_delayed_requeue(self._queue, job, remaining_secs))
+                        _metrics.cooldown_reschedules_total.inc()
                     record.status = "skipped"
                     record.skip_reason = reason
                     return record
@@ -375,6 +376,7 @@ class Reviewer:
                 job.mr_iid,
                 diff_hash[:12],
             )
+            _metrics.reviews_deduped_total.inc()
             return record
 
         # ----------------------------------------------------------------

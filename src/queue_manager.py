@@ -149,6 +149,7 @@ class QueueManager:
                         job.project_id,
                         job.mr_iid,
                     )
+                    _metrics.jobs_superseded_total.inc()
                     self._active -= 1
                     _metrics.queue_active.set(self._active)
                     self._done += 1

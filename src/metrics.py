@@ -76,7 +76,26 @@ queue_enqueued_total = Counter(
 
 queue_rejected_total = Counter(
     "glr_queue_rejected_total",
-    "Total jobs rejected (queue full or deduped)",
+    "Total jobs rejected (queue full or deduped at enqueue)",
+    registry=REGISTRY,
+)
+
+jobs_superseded_total = Counter(
+    "glr_jobs_superseded_total",
+    "Jobs silently dropped because a newer push arrived for the same MR",
+    registry=REGISTRY,
+)
+
+# ── Dedup / cooldown ─────────────────────────────────────────────────────────
+reviews_deduped_total = Counter(
+    "glr_reviews_deduped_total",
+    "Reviews skipped because the same diff hash was already reviewed",
+    registry=REGISTRY,
+)
+
+cooldown_reschedules_total = Counter(
+    "glr_cooldown_reschedules_total",
+    "Reviews rescheduled due to cooldown (latest push retained for retry)",
     registry=REGISTRY,
 )
 

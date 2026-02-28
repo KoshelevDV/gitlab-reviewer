@@ -122,6 +122,9 @@ class TestMetricsEndpoint:
         assert "glr_queue_active" in body
         assert "glr_llm_duration_seconds" in body
         assert "glr_queue_enqueued_total" in body
+        assert "glr_jobs_superseded_total" in body
+        assert "glr_reviews_deduped_total" in body
+        assert "glr_cooldown_reschedules_total" in body
 
     async def test_metrics_are_zero_initially(self, health_app):
         r = await health_app.get("/metrics")
