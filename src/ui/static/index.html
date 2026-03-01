@@ -375,6 +375,12 @@
       color: var(--yellow);
     }
 
+    /* ── Pulse animation ────────────────────────────────────────── */
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: .35; }
+    }
+
     /* ── Misc ───────────────────────────────────────────────────── */
     .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
     .text-accent { color: var(--accent-2); }
@@ -455,31 +461,45 @@
   <div x-show="activeTab === 'dashboard'">
     <div class="section-title">Dashboard</div>
 
-    <!-- Queue live state + DB totals -->
-    <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:20px;">
-      <!-- Pending: live queue depth (in-memory, resets on restart) -->
-      <div class="card" style="text-align:center; padding:20px 12px;">
-        <div class="stat-num" style="color:var(--yellow);" x-text="queue.pending"></div>
-        <div class="stat-lbl">Pending</div>
-        <div style="font-size:.68rem; color:var(--text-3); margin-top:3px;">in queue now</div>
+    <!-- Live queue state (in-memory, real-time) -->
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:16px;">
+      <div class="card" style="display:flex; align-items:center; gap:16px; padding:16px 20px;">
+        <div style="text-align:center; min-width:48px;">
+          <div class="stat-num" style="color:var(--yellow);" x-text="queue.pending"></div>
+          <div class="stat-lbl">Pending</div>
+        </div>
+        <div style="width:1px; height:36px; background:var(--border);"></div>
+        <div style="text-align:center; min-width:48px;">
+          <div class="stat-num" style="color:var(--accent-2);" x-text="queue.active"></div>
+          <div class="stat-lbl">Active</div>
+        </div>
+        <div style="margin-left:auto;">
+          <div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
+            <span class="status-dot" :class="queue.active > 0 ? 'dot-yellow' : queue.pending > 0 ? 'dot-yellow' : 'dot-green'"></span>
+            <span style="font-size:.78rem; color:var(--text-2);"
+              x-text="queue.active > 0 ? 'Reviewing…' : queue.pending > 0 ? 'Jobs queued' : 'Idle'"></span>
+          </div>
+          <div style="font-size:.72rem; color:var(--text-3);">live queue state</div>
+        </div>
       </div>
-      <!-- Active: jobs currently running (in-memory) -->
-      <div class="card" style="text-align:center; padding:20px 12px;">
-        <div class="stat-num" style="color:var(--accent-2);" x-text="queue.active"></div>
-        <div class="stat-lbl">Active</div>
-        <div style="font-size:.68rem; color:var(--text-3); margin-top:3px;">reviewing now</div>
-      </div>
-      <!-- Done: from DB (persistent, survives restart) -->
-      <div class="card" style="text-align:center; padding:20px 12px;">
-        <div class="stat-num" style="color:var(--green);" x-text="reviewStats.posted ?? 0"></div>
-        <div class="stat-lbl">Posted</div>
-        <div style="font-size:.68rem; color:var(--text-3); margin-top:3px;">total reviews</div>
-      </div>
-      <!-- Errors: from DB (persistent) -->
-      <div class="card" style="text-align:center; padding:20px 12px;">
-        <div class="stat-num" style="color:var(--red);" x-text="reviewStats.errors ?? 0"></div>
-        <div class="stat-lbl">Errors</div>
-        <div style="font-size:.68rem; color:var(--text-3); margin-top:3px;">total failed</div>
+
+      <!-- Processing list (if any) -->
+      <div class="card" style="padding:16px 20px;">
+        <div class="card-label" style="margin-bottom:8px;">Processing</div>
+        <template x-if="queue.processing?.length > 0">
+          <div style="display:flex; flex-direction:column; gap:4px;">
+            <template x-for="p in queue.processing" :key="p.mr_iid">
+              <div style="font-size:.78rem; display:flex; align-items:center; gap:6px;">
+                <span class="status-dot dot-yellow" style="animation: pulse 1.5s infinite;"></span>
+                <span style="color:var(--text-2);">project <span class="mono" x-text="p.project_id"></span></span>
+                <span class="badge badge-violet" x-text="'MR!'+p.mr_iid"></span>
+              </div>
+            </template>
+          </div>
+        </template>
+        <template x-if="!queue.processing?.length">
+          <span style="font-size:.8rem; color:var(--text-3);">Nothing processing right now</span>
+        </template>
       </div>
     </div>
 
