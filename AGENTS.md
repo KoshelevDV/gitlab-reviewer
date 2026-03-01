@@ -265,6 +265,8 @@ After v0.2: open `http://server:8000/ui/` to configure everything.
 - **In-flight dedup**: `_in_flight: set[tuple[str, int]]` blocks duplicate enqueue while a worker holds the job. Cleared in `_worker` try/finally. Does NOT survive process restart — by design (stateless between restarts)
 - **Processing status cooldown**: `get_last_review_time()` excludes `status IN ('processing', 'skipped')` — otherwise a freshly created processing record triggers the cooldown immediately
 - **UI CSS custom properties**: all colors in `index.html` use `var(--xxx)` tokens. Do NOT add new hardcoded Tailwind gray shades — add a token instead to keep the palette consistent
+- **Reactive UI (patchConfig)**: `PUT /api/v1/config` returns the full masked config (not `{"status":"ok"}`). `patchConfig()` in `index.html` MUST read the response body and assign it to `this.config` — otherwise saved settings won't reflect in the UI until page reload. Never change the endpoint to return a partial object
+- **setActiveProvider**: must patch both `providers[]` and `model.provider_id` in one request. Patching only `providers[].active` leaves `model.provider_id` pointing to the old provider, so the LLM backend keeps using the old one
 
 ## Status
 
@@ -295,3 +297,5 @@ After v0.2: open `http://server:8000/ui/` to configure everything.
 | Comment-snap: auto-advance off comment-only lines to code statement | v0.13 | ✅ Done |
 | GLM-4.7-Flash local provider (llama-server, AMD GPU Vulkan) | v0.13 | ✅ Done |
 | UI redesign: CSS custom properties, dark palette, WCAG contrast | v0.13 | ✅ Done |
+| Reactive UI: patchConfig returns full config, no page-reload needed | v0.14 | ✅ Done |
+| setActiveProvider also updates model.provider_id in one request | v0.14 | ✅ Done |

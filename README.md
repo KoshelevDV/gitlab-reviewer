@@ -347,6 +347,7 @@ helm upgrade gitlab-reviewer ./helm/gitlab-reviewer --reuse-values
 | **v0.11** | ✅ Done | Risk Score, Walkthrough Summary, SSE streaming, dry-run, weekly stats, CSV export |
 | **v0.12** | ✅ Done | Incremental review, language-aware prompts, slash commands |
 | **v0.13** | ✅ Done | In-flight dedup (race condition fix), processing status, GLM local provider, accurate inline placement, UI redesign |
+| **v0.14** | ✅ Done | Reactive UI: `PUT /api/v1/config` returns full config, no page-reload needed; `setActiveProvider` syncs `model.provider_id` |
 
 See [ROADMAP.md](ROADMAP.md) and [docs/CODE_REVIEW.md](docs/CODE_REVIEW.md) for full details.
 
@@ -443,3 +444,4 @@ queue:
 | v0.11 | ✅ Done | Risk Score, Walkthrough Summary, SSE, dry-run, статистика |
 | v0.12 | ✅ Done | Инкрементальное ревью, lang-aware промпты, slash-команды |
 | v0.13 | ✅ Done | In-flight dedup, статус processing, точные inline-комментарии, новый UI |
+| v0.14 | ✅ Done | Реактивный UI: PUT /config возвращает полный конфиг, смена провайдера синхронизирует model.provider_id |
