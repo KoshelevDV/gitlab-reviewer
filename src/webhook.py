@@ -62,12 +62,21 @@ def make_webhook_router() -> APIRouter:
         if action not in _REVIEWED_ACTIONS:
             return JSONResponse({"status": "ignored", "reason": f"action '{action}' not reviewed"})
 
-        # 3. Extract identifiers
-        project_id = body.get("project", {}).get("id")
-        mr_iid = attrs.get("iid")
+        # 3. Extract and validate identifiers
+        raw_project_id = body.get("project", {}).get("id")
+        raw_mr_iid = attrs.get("iid")
 
-        if not project_id or not mr_iid:
-            raise HTTPException(status_code=400, detail="Missing project_id or mr_iid")
+        # project_id must be a positive integer or non-empty string
+        if raw_project_id is None:
+            raise HTTPException(status_code=400, detail="Missing project.id")
+        if isinstance(raw_project_id, int) and raw_project_id <= 0:
+            raise HTTPException(status_code=400, detail="Invalid project_id: must be positive")
+        project_id = raw_project_id  # keep as int or str — both are valid
+
+        # mr_iid must be a positive integer
+        if not isinstance(raw_mr_iid, int) or raw_mr_iid <= 0:
+            raise HTTPException(status_code=400, detail="Invalid or missing mr_iid")
+        mr_iid: int = raw_mr_iid
 
         # 4. Enqueue
         if _queue is None:

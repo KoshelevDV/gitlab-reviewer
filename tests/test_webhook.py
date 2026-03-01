@@ -98,6 +98,50 @@ class TestPayloadValidation:
         assert data.get("mr_iid") == 5
 
 
+class TestWebhookValidation:
+    async def test_missing_project_id_returns_400(self, app):
+        body = make_mr_webhook_body()
+        del body["project"]["id"]
+        r = await app.post(WEBHOOK_URL, json=body, headers=HEADERS)
+        assert r.status_code == 400
+
+    async def test_zero_project_id_returns_400(self, app):
+        body = make_mr_webhook_body()
+        body["project"]["id"] = 0
+        r = await app.post(WEBHOOK_URL, json=body, headers=HEADERS)
+        assert r.status_code == 400
+
+    async def test_negative_project_id_returns_400(self, app):
+        body = make_mr_webhook_body()
+        body["project"]["id"] = -1
+        r = await app.post(WEBHOOK_URL, json=body, headers=HEADERS)
+        assert r.status_code == 400
+
+    async def test_string_project_id_accepted(self, app):
+        body = make_mr_webhook_body()
+        body["project"]["id"] = "42"
+        r = await app.post(WEBHOOK_URL, json=body, headers=HEADERS)
+        assert r.status_code in (200, 202)
+
+    async def test_missing_mr_iid_returns_400(self, app):
+        body = make_mr_webhook_body()
+        del body["object_attributes"]["iid"]
+        r = await app.post(WEBHOOK_URL, json=body, headers=HEADERS)
+        assert r.status_code == 400
+
+    async def test_string_mr_iid_returns_400(self, app):
+        body = make_mr_webhook_body()
+        body["object_attributes"]["iid"] = "7"
+        r = await app.post(WEBHOOK_URL, json=body, headers=HEADERS)
+        assert r.status_code == 400
+
+    async def test_zero_mr_iid_returns_400(self, app):
+        body = make_mr_webhook_body()
+        body["object_attributes"]["iid"] = 0
+        r = await app.post(WEBHOOK_URL, json=body, headers=HEADERS)
+        assert r.status_code == 400
+
+
 class TestHealthEndpoint:
     async def test_health_returns_ok(self, app):
         r = await app.get("/health")
