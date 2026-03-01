@@ -6,6 +6,13 @@
 # LLM Provider — OpenRouter (OpenAI-compat)
 # ---------------------------------------------------------------------------
 providers:
+  - id: glm-local
+    name: GLM-4.7-Flash (local, toolbox)
+    type: llamacpp
+    url: http://localhost:8080
+    api_key: ""
+    active: true
+
   - id: openrouter
     name: OpenRouter
     type: openai_compat
@@ -15,13 +22,13 @@ providers:
     active: true
 
 model:
-  provider_id: openrouter
-  # Free models on OpenRouter (choose one):
-  #   google/gemma-3-27b-it:free       — 131K ctx, stable, works without byok
-  #   qwen/qwen3-coder:free            — 262K ctx, coder-tuned, but Venice rate-limits
-  #   mistralai/mistral-small-3.1-24b-instruct:free — 128K ctx
-  #   nousresearch/hermes-3-llama-3.1-405b:free     — 131K ctx, strong reasoning
-  name: google/gemma-3-27b-it:free
+  provider_id: glm-local
+  # Local GLM-4.7-Flash via llama-server in toolbox (port 8080, AMD GPU)
+  # Fallback: switch provider_id to openrouter + set model name below
+  # OpenRouter free options:
+  #   google/gemma-3-27b-it:free       — 131K ctx, stable
+  #   qwen/qwen3-coder:free            — 262K ctx, coder-tuned (rate-limits on Venice)
+  name: GLM-4.7-Flash-UD-Q4_K_XL.gguf
   temperature: 0.2
   max_tokens: 4096
   inline_comments: true

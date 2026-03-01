@@ -50,6 +50,10 @@ class QueueManager:
         # Latest-wins debounce: (project_id, mr_iid) -> latest job.id
         # Used to supersede older queued jobs when a newer push arrives for the same MR
         self._latest_job_id: dict[tuple[str, int], int] = {}
+        # In-flight set: MRs currently being processed by a worker.
+        # Prevents duplicate reviews when two webhook events arrive before either
+        # review completes (race condition: dedup hash isn't known until diffs are fetched).
+        self._in_flight: set[tuple[str, int]] = set()
 
     # ------------------------------------------------------------------
     # Public API
@@ -69,6 +73,16 @@ class QueueManager:
             _metrics.queue_rejected_total.inc()
             return False
 
+        mr_key: tuple[str, int] = (str(job.project_id), job.mr_iid)
+        if mr_key in self._in_flight:
+            logger.info(
+                "In-flight: skipping project=%s MR!%d (review already running)",
+                job.project_id,
+                job.mr_iid,
+            )
+            _metrics.queue_rejected_total.inc()
+            return False
+
         try:
             self._job_counter += 1
             job.id = self._job_counter
@@ -77,7 +91,6 @@ class QueueManager:
             _metrics.queue_enqueued_total.inc()
             _metrics.queue_pending.set(self._pending)
             # Track latest job per MR for debounce / supersede logic
-            mr_key: tuple[str, int] = (str(job.project_id), job.mr_iid)
             self._latest_job_id[mr_key] = job.id
             logger.info(
                 "Enqueued job #%d: project=%s MR!%d (queue depth=%d)",
@@ -167,6 +180,8 @@ class QueueManager:
                     self._done += 1
                     self._queue.task_done()
                     continue
+                mr_key: tuple[str, int] = (str(job.project_id), job.mr_iid)
+                self._in_flight.add(mr_key)
                 try:
                     logger.info(
                         "Worker starting job #%d: project=%s MR!%d",
@@ -185,6 +200,7 @@ class QueueManager:
                         job.mr_iid,
                     )
                 finally:
+                    self._in_flight.discard(mr_key)
                     self._active -= 1
                     _metrics.queue_active.set(self._active)
                     self._queue.task_done()

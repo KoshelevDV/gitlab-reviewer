@@ -80,6 +80,29 @@ class TestDedup:
         assert r1 is True
         assert r2 is True
 
+    async def test_in_flight_blocks_duplicate(self, qm):
+        """A second job for the same MR is rejected while the first is in-flight."""
+        j1 = ReviewJob(project_id=1, mr_iid=99)
+        # Simulate first job being picked up by a worker
+        qm._in_flight.add(("1", 99))
+        r1 = await qm.enqueue(j1)
+        assert r1 is False
+
+    async def test_in_flight_cleared_allows_next(self, qm):
+        """After in-flight is cleared, new job for same MR is accepted."""
+        qm._in_flight.add(("1", 99))
+        r1 = await qm.enqueue(ReviewJob(project_id=1, mr_iid=99))
+        assert r1 is False
+        qm._in_flight.discard(("1", 99))
+        r2 = await qm.enqueue(ReviewJob(project_id=1, mr_iid=99))
+        assert r2 is True
+
+    async def test_in_flight_different_mr_not_blocked(self, qm):
+        """In-flight for MR!1 should not block MR!2."""
+        qm._in_flight.add(("1", 1))
+        r = await qm.enqueue(ReviewJob(project_id=1, mr_iid=2))
+        assert r is True
+
 
 class TestWorkers:
     async def test_worker_processes_job(self):
