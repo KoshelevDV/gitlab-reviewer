@@ -436,67 +436,13 @@ class TestRiskScore:
         score = _compute_risk_score(mr, diffs, text)
         assert score <= 100
 
-    def test_score_clamped_to_0(self):
-        from src.reviewer import _compute_risk_score
-        mr = self._mr(is_draft=True)
-        score = _compute_risk_score(mr, [], "")
-        assert score >= 0
-
-
-
-class TestRiskScore:
-    def _mr(self, is_draft: bool = False):
-        from src.gitlab_client import MRInfo
-        return MRInfo(
-            project_id=1, iid=1, title="T", description="",
-            author="dev", source_branch="feat", target_branch="main",
-            is_draft=is_draft, web_url="http://gl/mr/1",
-        )
-
-    def _diff(self, path: str = "main.py", lines: int = 10):
-        from src.gitlab_client import FileDiff
-        return FileDiff(
-            old_path=path, new_path=path,
-            diff="\n" * lines, new_file=False,
-            deleted_file=False, renamed_file=False,
-        )
-
-    def test_zero_for_trivial_mr(self):
-        from src.reviewer import _compute_risk_score
-        assert _compute_risk_score(self._mr(), [self._diff(lines=5)], "") == 0
-
-    def test_large_diff_increases_score(self):
-        from src.reviewer import _compute_risk_score
-        score = _compute_risk_score(self._mr(), [self._diff(lines=600)], "")
-        assert score >= 20
-
-    def test_sensitive_path_increases_score(self):
-        from src.reviewer import _compute_risk_score
-        score = _compute_risk_score(self._mr(), [self._diff(path="auth/login.py", lines=5)], "")
-        assert score >= 20
-
-    def test_critical_finding_increases_score(self):
-        from src.reviewer import _compute_risk_score
-        score = _compute_risk_score(self._mr(), [self._diff()], "- [CRITICAL] SQL injection")
-        assert score >= 15
-
     def test_medium_finding_increases_score(self):
         from src.reviewer import _compute_risk_score
         score = _compute_risk_score(self._mr(), [], "- [MEDIUM] minor issue\n" * 3)
         assert score >= 9
 
-    def test_draft_reduces_score(self):
-        from src.reviewer import _compute_risk_score
-        s_draft = _compute_risk_score(self._mr(is_draft=True), [self._diff(lines=300)], "")
-        s_normal = _compute_risk_score(self._mr(is_draft=False), [self._diff(lines=300)], "")
-        assert s_draft < s_normal
-
-    def test_score_clamped_to_100(self):
-        from src.reviewer import _compute_risk_score
-        diffs = [self._diff(path=f"security/auth{i}.py", lines=600) for i in range(5)]
-        text = "- [CRITICAL] issue\n" * 10
-        assert _compute_risk_score(self._mr(), diffs, text) <= 100
-
     def test_score_clamped_to_0(self):
         from src.reviewer import _compute_risk_score
-        assert _compute_risk_score(self._mr(is_draft=True), [], "") >= 0
+        mr = self._mr(is_draft=True)
+        score = _compute_risk_score(mr, [], "")
+        assert score >= 0

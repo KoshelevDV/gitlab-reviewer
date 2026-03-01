@@ -48,6 +48,25 @@ class QueueLike(Protocol):
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# Live streaming registry: job_id → asyncio.Queue[str | None]
+# None sentinel = stream complete; _stream_buffers replays chunks to late clients
+# ---------------------------------------------------------------------------
+_live_streams: dict[int, asyncio.Queue] = {}
+_stream_buffers: dict[int, list[str]] = {}
+
+
+def register_stream(job_id: int) -> asyncio.Queue:
+    q: asyncio.Queue = asyncio.Queue()
+    _live_streams[job_id] = q
+    _stream_buffers[job_id] = []
+    return q
+
+
+def unregister_stream(job_id: int) -> None:
+    _live_streams.pop(job_id, None)
+    _stream_buffers.pop(job_id, None)
+
 _db: Database | None = None
 
 
@@ -415,11 +434,26 @@ class Reviewer:
             prompt_names,
         )
         with _metrics.llm_duration_seconds.time():
-            review_text = await llm.chat(
-                system_prompt=system_prompt,
-                user_message=user_message,
-                temperature=cfg.model.temperature,
-            )
+            stream_q = _live_streams.get(job.id)
+            if stream_q is not None:
+                review_text = ""
+                async for chunk in llm.chat_stream(
+                    system_prompt=system_prompt,
+                    user_message=user_message,
+                    temperature=cfg.model.temperature,
+                ):
+                    review_text += chunk
+                    buf = _stream_buffers.get(job.id)
+                    if buf is not None:
+                        buf.append(chunk)
+                    await stream_q.put(chunk)
+                await stream_q.put(None)  # sentinel: stream complete
+            else:
+                review_text = await llm.chat(
+                    system_prompt=system_prompt,
+                    user_message=user_message,
+                    temperature=cfg.model.temperature,
+                )
         record.review_text = review_text
         self._queue.mark_seen(job.project_id, job.mr_iid, diff_hash)
 

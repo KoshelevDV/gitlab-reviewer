@@ -255,3 +255,44 @@ class TestDryRun:
             )
 
         assert r.status_code == 404
+
+
+class TestStreaming:
+    async def test_trigger_with_stream_returns_stream_url(self, client):
+        from unittest.mock import AsyncMock, MagicMock
+
+        from src.api.queue_api import set_queue_manager
+
+        qm = MagicMock()
+        qm.enqueue = AsyncMock(side_effect=lambda job: setattr(job, "id", 42) or True)
+        set_queue_manager(qm)
+
+        r = await client.post(
+            "/api/v1/queue/review",
+            json={"project_id": 1, "mr_iid": 1, "stream": True},
+        )
+        assert r.status_code == 202
+        data = r.json()
+        assert "stream_url" in data
+        assert "42" in data["stream_url"]
+
+    async def test_stream_endpoint_done_when_no_stream_registered(self, client):
+        from src.reviewer import unregister_stream
+
+        unregister_stream(9999)  # ensure not registered
+        r = await client.get("/api/v1/queue/review/9999/stream")
+        assert r.status_code == 200
+        assert "done" in r.text
+
+    async def test_stream_endpoint_replays_buffer(self, client):
+        from src.reviewer import _stream_buffers, register_stream, unregister_stream
+
+        job_id = 8888
+        q = register_stream(job_id)
+        _stream_buffers[job_id] = ["hello ", "world"]
+        await q.put(None)  # sentinel
+
+        r = await client.get(f"/api/v1/queue/review/{job_id}/stream")
+        assert r.status_code == 200
+        assert "hello" in r.text
+        unregister_stream(job_id)
