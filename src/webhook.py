@@ -142,15 +142,16 @@ async def _run_slash_command(cmd, project_id, mr_iid, cfg) -> None:  # type: ign
     from .gitlab_client import GitLabClient
 
     try:
+        provider = cfg.active_provider()
         reply = await execute_slash_command(
             cmd=cmd,
             project_id=project_id,
             mr_iid=mr_iid,
             gitlab_url=cfg.gitlab.url,
             gitlab_token=cfg.gitlab_token or "",
-            llm_base_url=cfg.model.base_url,
-            llm_api_key=cfg.llm_api_key or "",
-            llm_model=cfg.model.model,
+            llm_base_url=provider.url if provider else "",
+            llm_api_key=provider.api_key if provider else "",
+            llm_model=cfg.model.name,
             llm_temperature=cfg.model.temperature,
             tls_verify=cfg.gitlab.tls_verify,
         )

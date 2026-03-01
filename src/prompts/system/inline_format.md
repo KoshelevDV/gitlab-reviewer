@@ -18,9 +18,9 @@ Detailed explanation and concrete fix suggestion.
 - `[INFO]` — suggestion, best practice, note
 
 **Rules for inline annotations:**
-1. Only annotate lines that **actually appear in the diff** (added or modified lines).
+1. Only annotate lines that **actually appear in the diff** (added, modified, or context lines).
 2. Use the `new_path` from the diff header as the `file` value.
-3. Use the **new line number** (after the `+` in the diff hunk).
+3. The diff lines are formatted as `+NNN | code` or ` NNN | code` — use that `NNN` number directly as the `line` value. Do NOT count lines yourself or compute offsets from `@@` headers.
 4. Do **not** include more than 10 inline annotations per review.
 5. If you cannot identify the exact line, put the issue in the Summary instead.
 

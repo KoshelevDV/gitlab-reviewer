@@ -586,3 +586,105 @@ class TestDetectLanguage:
         from src.reviewer import _detect_language
         diffs = [self._diff("app.js"), self._diff("index.js"), self._diff("utils.js")]
         assert _detect_language(diffs) == "typescript"
+
+
+# ---------------------------------------------------------------------------
+# Tests for _parse_diff_line_map and _annotate_diff_with_line_numbers
+# ---------------------------------------------------------------------------
+
+
+class TestParseDiffLineMap:
+    """Unit tests for _parse_diff_line_map."""
+
+    def test_all_added_lines_new_file(self):
+        from src.reviewer import _parse_diff_line_map
+
+        diff = "@@ -0,0 +1,3 @@\n+line one\n+line two\n+line three\n"
+        m = _parse_diff_line_map(diff)
+        # All lines are added → old_line is None for every entry
+        assert m == {1: None, 2: None, 3: None}
+
+    def test_pure_context_lines(self):
+        from src.reviewer import _parse_diff_line_map
+
+        diff = "@@ -5,3 +5,3 @@\n line a\n line b\n line c\n"
+        m = _parse_diff_line_map(diff)
+        # Context lines map new_line → old_line
+        assert m == {5: 5, 6: 6, 7: 7}
+
+    def test_mixed_added_context_deleted(self):
+        from src.reviewer import _parse_diff_line_map
+
+        diff = (
+            "@@ -10,4 +10,4 @@\n"
+            " context1\n"     # new=10, old=10
+            "-old line\n"      # deleted → not in map
+            "+new line\n"      # new=11, old=None
+            " context2\n"     # new=12, old=11
+        )
+        m = _parse_diff_line_map(diff)
+        assert m[10] == 10    # context: new=10, old=10
+        assert m[11] is None  # added:   new=11, no old
+        assert m[12] == 12    # context after deletion: old_cursor skipped 11 (deleted), so old=12
+        assert 13 not in m    # nothing beyond
+
+    def test_multi_hunk(self):
+        from src.reviewer import _parse_diff_line_map
+
+        diff = (
+            "@@ -1,2 +1,2 @@\n"
+            " ctx\n"        # new=1, old=1
+            "+added1\n"     # new=2, old=None
+            "@@ -10,1 +10,2 @@\n"
+            " ctx2\n"       # new=10, old=10
+            "+added2\n"     # new=11, old=None
+        )
+        m = _parse_diff_line_map(diff)
+        assert m[1] == 1
+        assert m[2] is None
+        assert m[10] == 10
+        assert m[11] is None
+
+    def test_empty_diff(self):
+        from src.reviewer import _parse_diff_line_map
+
+        assert _parse_diff_line_map("") == {}
+
+
+class TestAnnotateDiffWithLineNumbers:
+    """Unit tests for _annotate_diff_with_line_numbers."""
+
+    def test_added_lines_get_correct_numbers(self):
+        from src.reviewer import _annotate_diff_with_line_numbers
+
+        diff = "@@ -0,0 +1,2 @@\n+hello\n+world"
+        out = _annotate_diff_with_line_numbers(diff)
+        assert "+    1 | hello" in out
+        assert "+    2 | world" in out
+
+    def test_context_lines_get_numbers(self):
+        from src.reviewer import _annotate_diff_with_line_numbers
+
+        diff = "@@ -5,2 +5,2 @@\n ctx\n+new"
+        out = _annotate_diff_with_line_numbers(diff)
+        assert "5 | ctx" in out
+        assert "+    6 | new" in out
+
+    def test_deleted_lines_get_old_line_numbers(self):
+        from src.reviewer import _annotate_diff_with_line_numbers
+
+        diff = "@@ -3,1 +3,0 @@\n-removed"
+        out = _annotate_diff_with_line_numbers(diff)
+        assert "-    3 | removed" in out
+
+    def test_hunk_header_preserved(self):
+        from src.reviewer import _annotate_diff_with_line_numbers
+
+        diff = "@@ -1,1 +1,1 @@\n+x"
+        out = _annotate_diff_with_line_numbers(diff)
+        assert "@@ -1,1 +1,1 @@" in out
+
+    def test_no_crash_on_empty_diff(self):
+        from src.reviewer import _annotate_diff_with_line_numbers
+
+        assert _annotate_diff_with_line_numbers("") == ""

@@ -406,12 +406,14 @@ class TestReviewerInlineFlow:
             is_draft=False,
             web_url="",
         )
+        # Diff must include a @@ header and match the file path in the annotation,
+        # with the annotated line (10) reachable inside the hunk.
         mock_diffs = [
             FileDiff(
-                old_path="a.py",
-                new_path="a.py",
-                diff="+x=1",
-                new_file=False,
+                old_path="src/app.py",
+                new_path="src/app.py",
+                diff="@@ -0,0 +1,12 @@\n" + "".join(f"+line{i}\n" for i in range(1, 13)),
+                new_file=True,
                 deleted_file=False,
                 renamed_file=False,
             )
