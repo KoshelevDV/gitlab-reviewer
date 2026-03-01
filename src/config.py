@@ -203,6 +203,13 @@ class AppConfig(BaseModel):
         tci = os.getenv("GLR_TELEGRAM_CHAT_ID", "")
         if tci:
             self.notifications.telegram_chat_id = tci
+        # LLM provider API key — injected into the active provider (matches provider_id or first)
+        llm_key = os.getenv("GLR_LLM_API_KEY", "")
+        if llm_key:
+            for p in self.providers:
+                if not p.api_key and (p.id == self.model.provider_id or not self.model.provider_id):
+                    p.api_key = llm_key
+                    break
         return self
 
     @property
@@ -250,6 +257,13 @@ def save_config(cfg: AppConfig, path: Path = CONFIG_PATH) -> None:
     # Strip private attrs that appear as None (pydantic v2 private fields)
     data.pop("_gitlab_token", None)
     data.pop("_gitlab_password", None)
+    # Strip provider api_keys that were injected from env (GLR_LLM_API_KEY)
+    # — only keep api_keys that were originally present in the loaded yaml
+    llm_key_from_env = os.getenv("GLR_LLM_API_KEY", "")
+    if llm_key_from_env:
+        for p in data.get("providers", []):
+            if p.get("api_key") == llm_key_from_env:
+                p["api_key"] = ""
 
     with tmp.open("w", encoding="utf-8") as f:
         yaml.dump(data, f, default_flow_style=False, allow_unicode=True, sort_keys=False)

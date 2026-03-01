@@ -89,12 +89,25 @@ class LLMClient:
     the system prompt is sealed, untrusted content only appears in the user turn.
     """
 
-    def __init__(self, base_url: str, model: str, timeout: int = 300, api_key: str = "") -> None:
+    def __init__(
+        self,
+        base_url: str,
+        model: str,
+        timeout: int = 300,
+        api_key: str = "",
+        extra_headers: dict[str, str] | None = None,
+    ) -> None:
         self._base = base_url.rstrip("/")
         self._model = model
-        headers = {}
+        headers: dict[str, str] = {}
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
+        # OpenRouter attribution headers (harmless for other providers)
+        if "openrouter.ai" in base_url:
+            headers.setdefault("HTTP-Referer", "https://github.com/KoshelevDV/gitlab-reviewer")
+            headers.setdefault("X-Title", "gitlab-reviewer")
+        if extra_headers:
+            headers.update(extra_headers)
         self._client = httpx.AsyncClient(headers=headers, timeout=timeout)
 
     async def aclose(self) -> None:

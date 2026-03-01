@@ -1,23 +1,106 @@
 # gitlab-reviewer configuration
 # See README for full reference.
+# Secrets: GLR_GITLAB_TOKEN, GLR_LLM_API_KEY (env / .env file)
 
+# ---------------------------------------------------------------------------
+# LLM Provider — OpenRouter (OpenAI-compat)
+# ---------------------------------------------------------------------------
+providers:
+  - id: openrouter
+    name: OpenRouter
+    type: openai_compat
+    # OpenRouter endpoint: api_key injected via GLR_LLM_API_KEY env var
+    url: https://openrouter.ai/api
+    api_key: ""   # filled from GLR_LLM_API_KEY at runtime
+    active: true
+
+model:
+  provider_id: openrouter
+  # Free models on OpenRouter (choose one):
+  #   google/gemma-3-27b-it:free       — 131K ctx, stable, works without byok
+  #   qwen/qwen3-coder:free            — 262K ctx, coder-tuned, but Venice rate-limits
+  #   mistralai/mistral-small-3.1-24b-instruct:free — 128K ctx
+  #   nousresearch/hermes-3-llama-3.1-405b:free     — 131K ctx, strong reasoning
+  name: google/gemma-3-27b-it:free
+  temperature: 0.2
+  max_tokens: 4096
+  inline_comments: true
+
+# ---------------------------------------------------------------------------
+# GitLab instance
+# ---------------------------------------------------------------------------
+gitlab:
+  url: https://gitlab.fgdevelop.tech
+  auth_type: token
+  # Token injected via GLR_GITLAB_TOKEN env var
+  tls_verify: true
+  webhook_secret: ""  # injected via GLR_WEBHOOK_SECRET
+
+# ---------------------------------------------------------------------------
+# Review targets
+# ---------------------------------------------------------------------------
+review_targets:
+  - type: group
+    id: "127"   # testauto group
+    branches:
+      pattern: "*"
+      protected_only: false
+    auto_approve: false
+    skip_draft: true
+    skip_authors:
+      - bot
+      - ci-bot
+    prompts:
+      system: []  # use global prompts
+
+# ---------------------------------------------------------------------------
+# Prompts
+# ---------------------------------------------------------------------------
 prompts:
   system:
-    # Prompts are loaded in order and joined into a single system prompt.
-    # base MUST be first — it contains the anti-injection rules.
-    # All names resolve to prompts/system/<name>.md or prompts/custom/<name>.md
-    # (custom takes precedence). Use {{include: name}} inside a prompt file
-    # to compose from another file.
-    - base         # role definition + anti-injection rules; includes code_review
-    - security     # security-focused checks
-    # - performance  # uncomment to add performance review
-    # - style        # uncomment to add style/maintainability review
-    # - example_team # your custom team rules (prompts/custom/example_team.md)
+    - base         # role + anti-injection rules
+    - security     # security checks
+    # - performance
+    # - style
 
-reviewers:
-  # Leave empty to allow all authors / all projects.
-  whitelist_authors: []
-  whitelist_projects: []
+# ---------------------------------------------------------------------------
+# Queue
+# ---------------------------------------------------------------------------
+queue:
+  backend: memory
+  max_concurrent: 3
+  max_queue_size: 100
 
-  # Skip draft / WIP merge requests.
-  skip_draft: true
+# ---------------------------------------------------------------------------
+# Review settings
+# ---------------------------------------------------------------------------
+review_cooldown_minutes: 5
+max_files_per_review: 50
+file_exclude:
+  - "*.lock"
+  - "package-lock.json"
+  - "yarn.lock"
+  - "poetry.lock"
+  - "Cargo.lock"
+  - "vendor/**"
+  - "node_modules/**"
+  - "*.min.js"
+  - "*.min.css"
+  - "*.generated.*"
+  - "dist/**"
+  - "build/**"
+
+# ---------------------------------------------------------------------------
+# Server
+# ---------------------------------------------------------------------------
+server:
+  host: 0.0.0.0
+  port: 8000
+  log_level: info
+
+# ---------------------------------------------------------------------------
+# UI
+# ---------------------------------------------------------------------------
+ui:
+  enabled: true
+  log_buffer_lines: 1000
