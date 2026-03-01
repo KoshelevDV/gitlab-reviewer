@@ -1,113 +1,85 @@
-# gitlab-reviewer configuration
-# See README for full reference.
-# Secrets: GLR_GITLAB_TOKEN, GLR_LLM_API_KEY (env / .env file)
-
-# ---------------------------------------------------------------------------
-# LLM Provider — OpenRouter (OpenAI-compat)
-# ---------------------------------------------------------------------------
-providers:
-  - id: glm-local
-    name: GLM-4.7-Flash (local, toolbox)
-    type: llamacpp
-    url: http://localhost:8080
-    api_key: ""
-    active: true
-
-  - id: openrouter
-    name: OpenRouter
-    type: openai_compat
-    # OpenRouter endpoint: api_key injected via GLR_LLM_API_KEY env var
-    url: https://openrouter.ai/api
-    api_key: ""   # filled from GLR_LLM_API_KEY at runtime
-    active: true
-
-model:
-  provider_id: glm-local
-  # Local GLM-4.7-Flash via llama-server in toolbox (port 8080, AMD GPU)
-  # Fallback: switch provider_id to openrouter + set model name below
-  # OpenRouter free options:
-  #   google/gemma-3-27b-it:free       — 131K ctx, stable
-  #   qwen/qwen3-coder:free            — 262K ctx, coder-tuned (rate-limits on Venice)
-  name: GLM-4.7-Flash-UD-Q4_K_XL.gguf
-  temperature: 0.2
-  max_tokens: 4096
-  inline_comments: true
-
-# ---------------------------------------------------------------------------
-# GitLab instance
-# ---------------------------------------------------------------------------
+cache:
+  backend: memory
+  ttl: 3600
+  valkey_url: redis://localhost:6379
+file_exclude:
+- '*.lock'
+- package-lock.json
+- yarn.lock
+- poetry.lock
+- Cargo.lock
+- vendor/**
+- node_modules/**
+- '*.min.js'
+- '*.min.css'
+- '*.generated.*'
+- dist/**
+- build/**
 gitlab:
-  url: https://gitlab.fgdevelop.tech
   auth_type: token
-  # Token injected via GLR_GITLAB_TOKEN env var
   tls_verify: true
-  webhook_secret: ""  # injected via GLR_WEBHOOK_SECRET
-
-# ---------------------------------------------------------------------------
-# Review targets
-# ---------------------------------------------------------------------------
-review_targets:
-  - type: group
-    id: "127"   # testauto group
-    branches:
-      pattern: "*"
-      protected_only: false
-    auto_approve: false
-    skip_draft: true
-    skip_authors:
-      - bot
-      - ci-bot
-    prompts:
-      system: []  # use global prompts
-
-# ---------------------------------------------------------------------------
-# Prompts
-# ---------------------------------------------------------------------------
+  url: https://gitlab.fgdevelop.tech
+max_files_per_review: 50
+model:
+  context_size: null
+  inline_comments: true
+  max_tokens: 4096
+  name: GLM-4.7-Flash-UD-Q4_K_XL.gguf
+  provider_id: glm-local
+  temperature: 0.2
+notifications:
+  enabled: false
+  format: generic
+  on_error: false
+  on_posted: true
+  on_skipped: false
 prompts:
   system:
-    - base         # role + anti-injection rules
-    - security     # security checks
-    # - performance
-    # - style
-
-# ---------------------------------------------------------------------------
-# Queue
-# ---------------------------------------------------------------------------
+  - base
+  - security
+providers:
+- active: true
+  api_key: ''
+  id: glm-local
+  name: GLM-4.7-Flash (local, toolbox)
+  type: llamacpp
+  url: http://localhost:8080
+- active: false
+  api_key: ''
+  id: openrouter
+  name: OpenRouter
+  type: openai_compat
+  url: https://openrouter.ai/api
 queue:
   backend: memory
+  kafka_brokers: localhost:9092
+  kafka_group_id: glr-reviewers
+  kafka_topic: glr.mr.events
   max_concurrent: 3
   max_queue_size: 100
-
-# ---------------------------------------------------------------------------
-# Review settings
-# ---------------------------------------------------------------------------
+  valkey_url: redis://localhost:6379
 review_cooldown_minutes: 2
-max_files_per_review: 50
-file_exclude:
-  - "*.lock"
-  - "package-lock.json"
-  - "yarn.lock"
-  - "poetry.lock"
-  - "Cargo.lock"
-  - "vendor/**"
-  - "node_modules/**"
-  - "*.min.js"
-  - "*.min.css"
-  - "*.generated.*"
-  - "dist/**"
-  - "build/**"
-
-# ---------------------------------------------------------------------------
-# Server
-# ---------------------------------------------------------------------------
+review_targets:
+- author_allowlist: []
+  auto_approve: false
+  branches:
+    pattern: '*'
+    protected_only: false
+  file_exclude: []
+  id: '127'
+  max_files_per_review: null
+  project_ids: []
+  prompts:
+    system: []
+  review_cooldown_minutes: null
+  skip_authors:
+  - bot
+  - ci-bot
+  type: group
 server:
   host: 0.0.0.0
-  port: 8000
   log_level: info
-
-# ---------------------------------------------------------------------------
-# UI
-# ---------------------------------------------------------------------------
+  port: 8000
 ui:
   enabled: true
   log_buffer_lines: 1000

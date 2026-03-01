@@ -1517,7 +1517,7 @@ function app() {
     activeProvider: null,
 
     showAddProvider: false,
-    newProvider: { id: '', name: '', type: 'ollama', url: 'http://localhost:11434', api_key: '', active: true },
+    newProvider: { id: '', name: '', type: 'ollama', url: 'http://localhost:11434', api_key: '', active: false },
     providerError: '',
     providerTestResults: {},
     providerModels: {},
@@ -1591,6 +1591,11 @@ function app() {
       this.providerError = '';
       if (!this.newProvider.id || !this.newProvider.url) { this.providerError = 'ID and URL are required'; return; }
       try {
+        // If new provider is added as active, deactivate all existing ones first
+        if (this.newProvider.active && (this.config.providers ?? []).length > 0) {
+          const deactivated = (this.config.providers).map(p => ({ ...p, active: false }));
+          await this.patchConfig({ providers: deactivated });
+        }
         const r = await fetch('/api/v1/providers', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(this.newProvider),
@@ -1598,7 +1603,7 @@ function app() {
         if (!r.ok) { this.providerError = (await r.json()).detail; return; }
         await this.loadConfig();
         this.showAddProvider = false;
-        this.newProvider = { id: '', name: '', type: 'ollama', url: 'http://localhost:11434', api_key: '', active: true };
+        this.newProvider = { id: '', name: '', type: 'ollama', url: 'http://localhost:11434', api_key: '', active: false };
         this.showToast('Provider added');
       } catch (e) { this.providerError = String(e); }
     },
