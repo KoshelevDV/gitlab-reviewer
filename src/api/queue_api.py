@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
@@ -52,16 +52,21 @@ class TriggerBody(BaseModel):
 
 
 @router.post("/review")
-async def trigger_review(body: TriggerBody) -> JSONResponse:
+async def trigger_review(
+    body: TriggerBody,
+    dry_run: bool = Query(default=False, description="Validate MR without enqueuing"),
+) -> JSONResponse:
     """Manually enqueue a review for a specific MR.
 
     dry_run=true  — validates MR via GitLab API without enqueuing.
+                    Can be passed as query param (?dry_run=true) or in JSON body.
     stream=true   — pre-registers SSE queue, returns stream_url.
     """
     if _queue_manager is None:
         raise HTTPException(status_code=503, detail="Queue not available")
 
-    if body.dry_run:
+    # Accept dry_run from either query param or body
+    if dry_run or body.dry_run:
         from ..config import get_config
         from ..gitlab_client import GitLabClient
 
