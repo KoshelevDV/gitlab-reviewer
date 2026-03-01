@@ -30,6 +30,10 @@ No data leaves your infrastructure. Everything configured through a **Web UI**.
 - 🌍 **Language-aware prompts** — auto-detects Python/Rust/TypeScript/Go, applies specific guidelines
 - 💬 **Slash commands** — post `/ask`, `/improve`, `/summary`, `/help` in MR comments
 - 📡 **SSE streaming** — watch the review generate in real time (`stream=true`)
+- 📍 **Accurate inline placement** — diff line map ensures comments land on exact code lines; auto-snaps off comment-only lines to the next code statement
+- ⏳ **Processing status** — `status=processing` record created before LLM call; visible in `/api/v1/queue` and Web UI
+- 🛡️ **In-flight dedup** — prevents duplicate reviews when two webhook events arrive before the first review completes
+- 🎨 **Redesigned Web UI** — consistent design system (CSS custom properties, GitHub-inspired dark palette, WCAG-compliant contrast, risk score visualization)
 
 ---
 
@@ -340,6 +344,9 @@ helm upgrade gitlab-reviewer ./helm/gitlab-reviewer --reuse-values
 | **v0.2–v0.8** | ✅ Done | Web UI, live logs, review history, auto-approve, inline comments, notifications |
 | **v0.9** | ✅ Done | Valkey distributed queue (redis.asyncio, LPUSH/BRPOP, cross-instance supersede) |
 | **v0.10** | ✅ Done | Kafka queue (aiokafka, KRaft, consumer groups, partition-keyed ordering) |
+| **v0.11** | ✅ Done | Risk Score, Walkthrough Summary, SSE streaming, dry-run, weekly stats, CSV export |
+| **v0.12** | ✅ Done | Incremental review, language-aware prompts, slash commands |
+| **v0.13** | ✅ Done | In-flight dedup (race condition fix), processing status, GLM local provider, accurate inline placement, UI redesign |
 
 See [ROADMAP.md](ROADMAP.md) and [docs/CODE_REVIEW.md](docs/CODE_REVIEW.md) for full details.
 
@@ -370,6 +377,10 @@ See [ROADMAP.md](ROADMAP.md) and [docs/CODE_REVIEW.md](docs/CODE_REVIEW.md) for 
 - 🌍 **Language-aware промпты** — автодетект Python/Rust/TS/Go
 - 💬 **Slash-команды** — `/ask`, `/improve`, `/summary` прямо в комментарии
 - 📡 **SSE стриминг** — наблюдать за генерацией в реальном времени
+- 📍 **Точные inline-комментарии** — diff line map; авто-сдвиг с комментарий-строк на код
+- ⏳ **Статус processing** — виден в очереди пока идёт генерация
+- 🛡️ **In-flight dedup** — защита от дублей при параллельных webhook-событиях
+- 🎨 **Переработанный Web UI** — единая дизайн-система, WCAG-совместимый контраст
 - 💾 `config.yml` — единый источник истины
 
 ## Быстрый старт
@@ -429,3 +440,6 @@ queue:
 | v0.2–0.8 | ✅ Done | Web UI, логи, история, авто-апрув, уведомления |
 | v0.9 | ✅ Done | Valkey распределённая очередь |
 | v0.10 | ✅ Done | Kafka очередь (KRaft, aiokafka) |
+| v0.11 | ✅ Done | Risk Score, Walkthrough Summary, SSE, dry-run, статистика |
+| v0.12 | ✅ Done | Инкрементальное ревью, lang-aware промпты, slash-команды |
+| v0.13 | ✅ Done | In-flight dedup, статус processing, точные inline-комментарии, новый UI |

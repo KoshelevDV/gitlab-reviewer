@@ -7,9 +7,12 @@ structured review comment to MR. Managed entirely through a Web UI.
 
 ## Stack
 - Python 3.11+, FastAPI, uvicorn, httpx, pydantic-settings, PyYAML
-- **Web UI:** Alpine.js + HTMX (CDN, no build step), Tailwind CSS (CDN)
+- **Web UI:** Alpine.js (CDN, no build step), Tailwind CSS (CDN)
+  - Design system via CSS custom properties (`--bg`, `--surface`, `--accent`, `--text-1/2/3`)
+  - GitHub-inspired dark palette; WCAG AA–compliant contrast on all text
 - **LLM backends:** ollama, llama.cpp HTTP server, any OpenAI-compatible endpoint
 - **Recommended model:** `qwen2.5-coder:32b` (Q4_K_M, ~20GB)
+- **Local tested:** GLM-4.7-Flash-UD-Q4_K_XL via llama-server (AMD GPU Vulkan, port 8080)
 - **Storage:** SQLite via aiosqlite (review history + persistent dedup cache)
 - **Queue backends:** memory (default) · valkey/redis (`redis>=4.2`) · kafka (`aiokafka>=0.10`)
 - Dockerfile multi-stage, docker-compose (profiles: valkey, kafka), Helm chart
@@ -25,6 +28,15 @@ src/
   reviewer.py         — Orchestration: filter → sanitise → LLM → comment → persist
                         + risk score, walkthrough summary, incremental review, lang detection
                         + SSE streaming (_live_streams, _stream_buffers, register_stream)
+                        + _parse_diff_line_map(): unified diff → {new_line: old_line|None}
+                        + _build_diff_content_map(): unified diff → {new_line: content}
+                        + _annotate_diff_with_line_numbers(): prefixes each diff line with
+                          new-file number for LLM ("+  42 | code") — no counting from @@
+                        + _is_comment_content(): detects comment-only lines (#, //, /*, *)
+                        + in-flight dedup: _in_flight set in QueueManager blocks duplicate
+                          enqueue while MR is being processed
+                        + processing status: ReviewRecord saved with status='processing'
+                          before LLM call; updated on completion via update_review()
   webhook.py          — FastAPI routes, HMAC check, enqueue; Note Hook → slash commands
   slash_commands.py   — /ask, /improve, /summary, /help command parser + executor
   queue_manager.py    — QueueManager: asyncio.Queue + Semaphore, dedup, stats
@@ -198,7 +210,7 @@ tests/
     test_reviews_api.py       — /api/v1/reviews: list, filter, paginate, stats, recent, get by id
 ```
 
-**154 tests, ~1.5s** — all pass on Python 3.11 and 3.12.
+**501 tests, ~5s** — all pass on Python 3.11 and 3.12.
 
 ### Key testing decisions
 - `respx` mocks all httpx calls (no real network in tests)
@@ -247,6 +259,12 @@ After v0.2: open `http://server:8000/ui/` to configure everything.
 - **Language detection**: threshold is 40% of files — avoids mislabelling polyglot repos
 - **PromptEngine init**: accepts `Path | str` — internally converts to Path; old code broke when `str` was passed
 - **Route ordering in FastAPI**: literal paths (`/stats/weekly`, `/export.csv`) MUST be registered BEFORE parameterized (`/{review_id}`) — otherwise FastAPI captures them as path params
+- **Inline comment placement**: GitLab Discussions API requires `old_line` for context lines (unchanged lines in the diff) — passing only `new_line` causes comment to be silently misplaced. Use `_parse_diff_line_map()` to determine whether to include `old_line`
+- **Comment-snap**: if LLM references a comment-only line (e.g. `# SQL injection`), `_is_comment_content()` + `_build_diff_content_map()` advance the target to the next non-comment line. Regex covers `#`, `//`, `/*`, `*`, `<!--`, `--`
+- **Annotated diff format**: diff sent to LLM uses `+NNN | code` format (from `_annotate_diff_with_line_numbers()`). LLM must use the `NNN` number directly — do NOT parse old `@@` hunk offsets. Update `inline_format.md` if the format changes
+- **In-flight dedup**: `_in_flight: set[tuple[str, int]]` blocks duplicate enqueue while a worker holds the job. Cleared in `_worker` try/finally. Does NOT survive process restart — by design (stateless between restarts)
+- **Processing status cooldown**: `get_last_review_time()` excludes `status IN ('processing', 'skipped')` — otherwise a freshly created processing record triggers the cooldown immediately
+- **UI CSS custom properties**: all colors in `index.html` use `var(--xxx)` tokens. Do NOT add new hardcoded Tailwind gray shades — add a token instead to keep the palette consistent
 
 ## Status
 
@@ -271,3 +289,9 @@ After v0.2: open `http://server:8000/ui/` to configure everything.
 | FT-3: Incremental review via GitLab MR Versions API | v0.12 | ✅ Done |
 | FT-4: Language-aware prompt auto-selection (Python/Rust/TS/Go) | v0.12 | ✅ Done |
 | FT-1: Slash commands (/ask, /improve, /summary, /help) | v0.12 | ✅ Done |
+| In-flight dedup (race condition fix for parallel webhooks) | v0.13 | ✅ Done |
+| Processing status: ReviewRecord saved before LLM call | v0.13 | ✅ Done |
+| Accurate inline placement: diff line map + old_line for context lines | v0.13 | ✅ Done |
+| Comment-snap: auto-advance off comment-only lines to code statement | v0.13 | ✅ Done |
+| GLM-4.7-Flash local provider (llama-server, AMD GPU Vulkan) | v0.13 | ✅ Done |
+| UI redesign: CSS custom properties, dark palette, WCAG contrast | v0.13 | ✅ Done |
