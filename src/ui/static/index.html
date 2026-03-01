@@ -1622,10 +1622,10 @@ function app() {
     },
 
     async setActiveProvider(prov) {
-      // Mark chosen provider active, all others inactive
-      const updated = (this.config.providers ?? []).map(p => ({ ...p, active: p.id === prov.id }));
-      await this.patchConfig({ providers: updated });
-      await this.loadConfig();
+      // Mark chosen provider active, all others inactive; also point model to new provider
+      const updatedProviders = (this.config.providers ?? []).map(p => ({ ...p, active: p.id === prov.id }));
+      const updatedModel = { ...(this.config.model ?? {}), provider_id: prov.id };
+      await this.patchConfig({ providers: updatedProviders, model: updatedModel });
       this.showToast(`"${prov.name}" is now the active provider`);
     },
 
@@ -1881,7 +1881,12 @@ function app() {
           method: 'PUT', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(patch),
         });
-        if (!r.ok) { const err = await r.json(); this.showToast('Error: ' + JSON.stringify(err.detail), 'error'); }
+        if (!r.ok) { const err = await r.json(); this.showToast('Error: ' + JSON.stringify(err.detail), 'error'); return; }
+        // Update local state from the returned full config — no separate GET needed
+        const updated = await r.json();
+        this.config = updated;
+        this.activeProvider = (updated.providers ?? []).find(p => p.active && p.id === updated.model?.provider_id)
+          || (updated.providers ?? []).find(p => p.active) || null;
       } catch (e) { this.showToast('Network error: ' + e, 'error'); }
     },
 

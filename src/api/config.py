@@ -67,7 +67,7 @@ async def update_config(body: dict) -> JSONResponse:
     reload_config(CONFIG_PATH)
     if _prompt_engine is not None:
         _prompt_engine.invalidate_cache()
-    return JSONResponse({"status": "ok", "message": "Config saved and reloaded"})
+    return JSONResponse(_mask_secrets(new_cfg.model_dump()))
 
 
 @router.post("/reload")
