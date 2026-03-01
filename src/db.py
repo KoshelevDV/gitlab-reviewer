@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS reviews (
     auto_approved   INTEGER DEFAULT 0,
     inline_count    INTEGER DEFAULT 0,
     risk_score      INTEGER DEFAULT 0,
+    mr_version_id   INTEGER DEFAULT 0,
     created_at      TEXT    DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );
 CREATE INDEX IF NOT EXISTS idx_reviews_project   ON reviews(project_id);
@@ -67,7 +68,8 @@ class ReviewRecord:
     skip_reason: str = ""
     auto_approved: bool = False
     inline_count: int = 0  # number of inline GitLab discussion comments posted
-    risk_score: int = 0   # deterministic 0-100 risk score (no LLM)
+    risk_score: int = 0      # deterministic 0-100 risk score (no LLM)
+    mr_version_id: int = 0   # GitLab MR diff version ID at time of review
     id: int = 0
     created_at: str = ""
 
@@ -98,6 +100,8 @@ class Database:
             "ALTER TABLE reviews ADD COLUMN inline_count INTEGER DEFAULT 0",
             # v0.11: deterministic risk score column
             "ALTER TABLE reviews ADD COLUMN risk_score INTEGER DEFAULT 0",
+            # v0.12: GitLab MR diff version tracking (incremental review)
+            "ALTER TABLE reviews ADD COLUMN mr_version_id INTEGER DEFAULT 0",
         ]
         cur = await self._db.execute("PRAGMA table_info(reviews)")
         existing_cols = {row[1] for row in await cur.fetchall()}
@@ -124,8 +128,8 @@ class Database:
                (project_id, mr_iid, mr_title, mr_url, author,
                 source_branch, target_branch, diff_hash, prompt_names,
                 review_text, status, skip_reason, auto_approved,
-                inline_count, risk_score, created_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                inline_count, risk_score, mr_version_id, created_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 str(rec.project_id),
                 rec.mr_iid,
@@ -142,6 +146,7 @@ class Database:
                 int(rec.auto_approved),
                 rec.inline_count,
                 rec.risk_score,
+                rec.mr_version_id,
                 rec.created_at,
             ),
         )
@@ -277,6 +282,26 @@ class Database:
             return datetime.fromisoformat(raw.replace("Z", "+00:00"))
         except ValueError:
             return None
+
+    async def get_last_mr_version_id(
+        self, project_id: str | int, mr_iid: int
+    ) -> int | None:
+        """Return the GitLab MR version_id from the most recent review for this MR.
+
+        Returns None if no previous review exists or version was not recorded (legacy row).
+        Used for incremental review: only re-review diffs since that version.
+        """
+        assert self._db is not None
+        async with self._db.execute(
+            """SELECT mr_version_id FROM reviews
+               WHERE project_id = ? AND mr_iid = ? AND status = 'posted'
+               ORDER BY id DESC LIMIT 1""",
+            (str(project_id), mr_iid),
+        ) as cur:
+            row = await cur.fetchone()
+        if row is None or not row[0]:
+            return None
+        return int(row[0])
 
 
 def _row_to_record(row: aiosqlite.Row) -> ReviewRecord:

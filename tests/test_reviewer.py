@@ -446,3 +446,93 @@ class TestRiskScore:
         mr = self._mr(is_draft=True)
         score = _compute_risk_score(mr, [], "")
         assert score >= 0
+
+
+class TestIncrementalReview:
+    """Test that incremental review uses GitLab MR Versions API."""
+
+    async def test_incremental_diff_used_when_previous_version_exists(
+        self, reviewer, mock_gitlab, mock_llm, db, cfg_with_target
+    ):
+        """When a previous review exists with a lower version_id, get_version_diffs is called."""
+        from src.db import ReviewRecord
+        from src.gitlab_client import FileDiff
+
+        # Seed the DB with a previous review at version 1
+        rec = ReviewRecord(
+            project_id="42", mr_iid=7, mr_title="T", mr_url="",
+            author="a", source_branch="f", target_branch="main",
+            diff_hash="old", prompt_names=["default"],
+            review_text="old review", status="posted",
+            mr_version_id=1,
+        )
+        await db.save_review(rec)
+
+        # Current version is 2
+        mock_gitlab.get_mr_versions = AsyncMock(
+            return_value=[{"id": 2, "head_commit_sha": "new", "base_commit_sha": "b",
+                           "start_commit_sha": "s"}]
+        )
+        incremental_diffs = [
+            FileDiff("changed.py", "changed.py", "+new line", False, False, False)
+        ]
+        mock_gitlab.get_version_diffs = AsyncMock(return_value=incremental_diffs)
+
+        set_database(db)
+        with (
+            patch("src.reviewer._make_gitlab_client", return_value=mock_gitlab),
+            patch("src.reviewer._make_llm_client", return_value=mock_llm),
+            patch("src.reviewer.get_config", return_value=cfg_with_target),
+        ):
+            job = ReviewJob(project_id=42, mr_iid=7)
+            await reviewer.review_job(job)
+
+        # Verify incremental diffs were used
+        mock_gitlab.get_version_diffs.assert_called_once()
+        call_kwargs = mock_gitlab.get_version_diffs.call_args
+        assert call_kwargs.kwargs.get("start_version_id") == 1
+
+        # Verify the new review has version_id=2
+        records, _ = await db.list_reviews()
+        latest = max(records, key=lambda r: r.id)
+        assert latest.mr_version_id == 2
+
+    async def test_full_diff_used_when_no_previous_version(
+        self, reviewer, mock_gitlab, mock_llm, db, cfg_with_target
+    ):
+        """With no previous version in DB, get_diffs (full diff) is used."""
+        mock_gitlab.get_mr_versions = AsyncMock(
+            return_value=[{"id": 1, "head_commit_sha": "h", "base_commit_sha": "b",
+                           "start_commit_sha": "s"}]
+        )
+
+        set_database(db)
+        with (
+            patch("src.reviewer._make_gitlab_client", return_value=mock_gitlab),
+            patch("src.reviewer._make_llm_client", return_value=mock_llm),
+            patch("src.reviewer.get_config", return_value=cfg_with_target),
+        ):
+            job = ReviewJob(project_id=42, mr_iid=7)
+            await reviewer.review_job(job)
+
+        # Full diffs were used; get_version_diffs should not be called
+        mock_gitlab.get_diffs.assert_called()
+
+    async def test_fallback_to_full_diff_when_versions_api_fails(
+        self, reviewer, mock_gitlab, mock_llm, db, cfg_with_target
+    ):
+        """If get_mr_versions raises, fall back to full diff gracefully."""
+        mock_gitlab.get_mr_versions = AsyncMock(side_effect=Exception("API error"))
+
+        set_database(db)
+        with (
+            patch("src.reviewer._make_gitlab_client", return_value=mock_gitlab),
+            patch("src.reviewer._make_llm_client", return_value=mock_llm),
+            patch("src.reviewer.get_config", return_value=cfg_with_target),
+        ):
+            job = ReviewJob(project_id=42, mr_iid=7)
+            await reviewer.review_job(job)
+
+        records, _ = await db.list_reviews()
+        assert any(r.status == "posted" for r in records)
+        mock_gitlab.get_diffs.assert_called()

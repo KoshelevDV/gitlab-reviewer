@@ -154,3 +154,52 @@ class TestRecent:
     async def test_recent_empty_db(self, db):
         records = await db.recent()
         assert records == []
+
+
+class TestGetLastMRVersionId:
+    async def test_returns_none_when_no_reviews(self, db):
+        result = await db.get_last_mr_version_id("42", 7)
+        assert result is None
+
+    async def test_returns_version_id_after_review(self, db):
+        from src.db import ReviewRecord
+
+        rec = ReviewRecord(
+            project_id="42", mr_iid=7, mr_title="T", mr_url="",
+            author="a", source_branch="f", target_branch="main",
+            diff_hash="h", prompt_names=["default"],
+            review_text="ok", status="posted",
+            mr_version_id=5,
+        )
+        await db.save_review(rec)
+        result = await db.get_last_mr_version_id("42", 7)
+        assert result == 5
+
+    async def test_returns_none_when_review_not_posted(self, db):
+        from src.db import ReviewRecord
+
+        rec = ReviewRecord(
+            project_id="42", mr_iid=7, mr_title="T", mr_url="",
+            author="a", source_branch="f", target_branch="main",
+            diff_hash="h", prompt_names=["default"],
+            review_text="", status="skipped",
+            mr_version_id=3,
+        )
+        await db.save_review(rec)
+        result = await db.get_last_mr_version_id("42", 7)
+        assert result is None
+
+    async def test_returns_latest_when_multiple_reviews(self, db):
+        from src.db import ReviewRecord
+
+        for vid in [1, 2, 3]:
+            rec = ReviewRecord(
+                project_id="42", mr_iid=7, mr_title="T", mr_url="",
+                author="a", source_branch="f", target_branch="main",
+                diff_hash=f"h{vid}", prompt_names=["default"],
+                review_text="ok", status="posted",
+                mr_version_id=vid,
+            )
+            await db.save_review(rec)
+        result = await db.get_last_mr_version_id("42", 7)
+        assert result == 3

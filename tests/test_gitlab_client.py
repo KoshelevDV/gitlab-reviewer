@@ -207,3 +207,73 @@ class TestPostMRNote:
         await client.post_mr_note(42, 7, "Review text")
         assert route.called
         await client.aclose()
+
+
+class TestMRVersions:
+    @respx.mock
+    async def test_get_mr_versions_returns_list(self, client):
+        payload = [
+            {"id": 3, "head_commit_sha": "abc", "base_commit_sha": "def",
+             "start_commit_sha": "ghi"},
+            {"id": 2, "head_commit_sha": "xxx", "base_commit_sha": "yyy",
+             "start_commit_sha": "zzz"},
+        ]
+        respx.get(f"{BASE}/api/v4/projects/10/merge_requests/5/versions").mock(
+            return_value=Response(200, json=payload)
+        )
+        result = await client.get_mr_versions(10, 5)
+        await client.aclose()
+        assert len(result) == 2
+        assert result[0]["id"] == 3
+
+    @respx.mock
+    async def test_get_mr_versions_empty(self, client):
+        respx.get(f"{BASE}/api/v4/projects/10/merge_requests/5/versions").mock(
+            return_value=Response(200, json=[])
+        )
+        result = await client.get_mr_versions(10, 5)
+        await client.aclose()
+        assert result == []
+
+    @respx.mock
+    async def test_get_version_diffs_returns_files(self, client):
+        payload = {
+            "id": 3,
+            "diffs": [
+                {
+                    "old_path": "a.py", "new_path": "a.py",
+                    "diff": "+x = 1", "new_file": False,
+                    "deleted_file": False, "renamed_file": False,
+                }
+            ],
+        }
+        respx.get(f"{BASE}/api/v4/projects/10/merge_requests/5/versions/3").mock(
+            return_value=Response(200, json=payload)
+        )
+        diffs = await client.get_version_diffs(10, 5, 3)
+        await client.aclose()
+        assert len(diffs) == 1
+        assert diffs[0].new_path == "a.py"
+
+    @respx.mock
+    async def test_get_version_diffs_empty_diffs_key(self, client):
+        payload = {"id": 3, "diffs": []}
+        respx.get(f"{BASE}/api/v4/projects/10/merge_requests/5/versions/3").mock(
+            return_value=Response(200, json=payload)
+        )
+        diffs = await client.get_version_diffs(10, 5, 3)
+        await client.aclose()
+        assert diffs == []
+
+    @respx.mock
+    async def test_get_version_diffs_passes_start_version_id(self, client):
+        """Ensures start_version_id is forwarded as query param for incremental diff."""
+        payload = {"id": 3, "diffs": []}
+        route = respx.get(
+            f"{BASE}/api/v4/projects/10/merge_requests/5/versions/3",
+            params={"start_version_id": 1},
+        ).mock(return_value=Response(200, json=payload))
+        diffs = await client.get_version_diffs(10, 5, 3, start_version_id=1)
+        await client.aclose()
+        assert route.called
+        assert diffs == []

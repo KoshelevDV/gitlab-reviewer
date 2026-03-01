@@ -370,14 +370,55 @@ class Reviewer:
         system_prompt = self._prompts.build_system_prompt(prompt_names)
 
         # ----------------------------------------------------------------
-        # 5. Fetch diffs
+        # 5. Fetch diffs (incremental when previous review version known)
         # ----------------------------------------------------------------
         effective_max_files = (
             target.max_files_per_review
             if target is not None and target.max_files_per_review is not None
             else cfg.max_files_per_review
         )
-        diffs = await gitlab.get_diffs(job.project_id, job.mr_iid, max_files=effective_max_files)
+
+        # Attempt incremental review via GitLab MR Versions API
+        diffs = []
+        current_version_id = 0
+        last_version_id = 0
+        incremental = False
+        try:
+            versions = await gitlab.get_mr_versions(job.project_id, job.mr_iid)
+            if versions:
+                current_version_id = int(versions[0].get("id") or 0)
+                record.mr_version_id = current_version_id
+                if _db is not None:
+                    _prev_ver = await _db.get_last_mr_version_id(
+                        job.project_id, job.mr_iid
+                    )
+                    last_version_id = _prev_ver if _prev_ver is not None else 0
+                if last_version_id and last_version_id < current_version_id:
+                    # Incremental: only review what changed since last review
+                    diffs = await gitlab.get_version_diffs(
+                        job.project_id,
+                        job.mr_iid,
+                        current_version_id,
+                        start_version_id=last_version_id,
+                        max_files=effective_max_files,
+                    )
+                    if diffs:
+                        incremental = True
+                        logger.info(
+                            "Incremental review: version %d → %d (%d files changed) "
+                            "project=%s MR!%d",
+                            last_version_id, current_version_id, len(diffs),
+                            job.project_id, job.mr_iid,
+                        )
+        except Exception:
+            logger.debug("MR Versions API unavailable, falling back to full diff", exc_info=True)
+
+        if not diffs:
+            # Fall back to full diff (no previous version or versions API failed)
+            diffs = await gitlab.get_diffs(
+                job.project_id, job.mr_iid, max_files=effective_max_files
+            )
+
         if not diffs:
             record.status = "skipped"
             record.skip_reason = "no diffs found"
@@ -533,8 +574,13 @@ class Reviewer:
             else "🟢 LOW"
         )
         header_parts = [f"**Risk Score:** {risk_label} ({risk_score}/100)"]
+        if incremental:
+            header_parts.append(
+                f"📦 **Incremental review** — only changes since version {last_version_id} "
+                f"(current: {current_version_id})"
+            )
         if walkthrough:
-            header_parts = [f"## MR Walkthrough\n\n{walkthrough}", header_parts[0]]
+            header_parts = [f"## MR Walkthrough\n\n{walkthrough}"] + header_parts
         summary_text = "\n\n".join(header_parts) + "\n\n---\n\n" + summary_text
 
         summary_comment = _format_summary_comment(summary_text, inline_count=len(inline_comments))

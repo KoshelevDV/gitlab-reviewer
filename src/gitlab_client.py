@@ -227,6 +227,61 @@ class GitLabClient:
 
         return diffs
 
+    async def get_mr_versions(
+        self, project_id: int | str, mr_iid: int
+    ) -> list[dict]:
+        """Return all MR diff versions, newest first.
+
+        Each entry has: id, head_commit_sha, start_commit_sha, base_commit_sha.
+        """
+        pid = quote(str(project_id), safe="")
+        resp = await self._client.get(
+            f"{self._base}/api/v4/projects/{pid}/merge_requests/{mr_iid}/versions",
+        )
+        resp.raise_for_status()
+        return resp.json()  # type: ignore[no-any-return]
+
+    async def get_version_diffs(
+        self,
+        project_id: int | str,
+        mr_iid: int,
+        version_id: int,
+        start_version_id: int | None = None,
+        max_files: int = 50,
+    ) -> list[FileDiff]:
+        """Return diffs for a specific MR version.
+
+        If start_version_id is provided, returns only the incremental diff
+        between that version and version_id (files changed since last review).
+        """
+        pid = quote(str(project_id), safe="")
+        params: dict = {}
+        if start_version_id is not None:
+            params["start_version_id"] = start_version_id
+
+        resp = await self._client.get(
+            f"{self._base}/api/v4/projects/{pid}/merge_requests/{mr_iid}/versions/{version_id}",
+            params=params,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        diffs: list[FileDiff] = []
+        for item in data.get("diffs", []):
+            diffs.append(
+                FileDiff(
+                    old_path=item.get("old_path", ""),
+                    new_path=item.get("new_path", ""),
+                    diff=item.get("diff", ""),
+                    new_file=item.get("new_file", False),
+                    deleted_file=item.get("deleted_file", False),
+                    renamed_file=item.get("renamed_file", False),
+                )
+            )
+            if len(diffs) >= max_files:
+                logger.warning("Hit max_files=%d limit in version diff", max_files)
+                break
+        return diffs
+
     # ------------------------------------------------------------------
     # Comments
     # ------------------------------------------------------------------
