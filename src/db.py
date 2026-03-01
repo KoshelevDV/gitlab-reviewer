@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS reviews (
     skip_reason     TEXT    DEFAULT '',
     auto_approved   INTEGER DEFAULT 0,
     inline_count    INTEGER DEFAULT 0,
+    risk_score      INTEGER DEFAULT 0,
     created_at      TEXT    DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );
 CREATE INDEX IF NOT EXISTS idx_reviews_project   ON reviews(project_id);
@@ -66,6 +67,7 @@ class ReviewRecord:
     skip_reason: str = ""
     auto_approved: bool = False
     inline_count: int = 0  # number of inline GitLab discussion comments posted
+    risk_score: int = 0   # deterministic 0-100 risk score (no LLM)
     id: int = 0
     created_at: str = ""
 
@@ -94,6 +96,8 @@ class Database:
         _migrations = [
             # v0.5: inline comment count column
             "ALTER TABLE reviews ADD COLUMN inline_count INTEGER DEFAULT 0",
+            # v0.11: deterministic risk score column
+            "ALTER TABLE reviews ADD COLUMN risk_score INTEGER DEFAULT 0",
         ]
         cur = await self._db.execute("PRAGMA table_info(reviews)")
         existing_cols = {row[1] for row in await cur.fetchall()}
@@ -120,8 +124,8 @@ class Database:
                (project_id, mr_iid, mr_title, mr_url, author,
                 source_branch, target_branch, diff_hash, prompt_names,
                 review_text, status, skip_reason, auto_approved,
-                inline_count, created_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                inline_count, risk_score, created_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 str(rec.project_id),
                 rec.mr_iid,
@@ -137,6 +141,7 @@ class Database:
                 rec.skip_reason,
                 int(rec.auto_approved),
                 rec.inline_count,
+                rec.risk_score,
                 rec.created_at,
             ),
         )

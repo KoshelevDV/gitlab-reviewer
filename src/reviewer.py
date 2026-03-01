@@ -424,6 +424,17 @@ class Reviewer:
         self._queue.mark_seen(job.project_id, job.mr_iid, diff_hash)
 
         # ----------------------------------------------------------------
+        # 7b. Walkthrough summary + Risk Score (parallel to inline parsing)
+        # ----------------------------------------------------------------
+        walkthrough = await _generate_summary(llm, user_message)
+        risk_score = _compute_risk_score(mr, diffs, review_text)
+        record.risk_score = risk_score
+        logger.info(
+            "Risk score: %d — project=%s MR!%d",
+            risk_score, job.project_id, job.mr_iid,
+        )
+
+        # ----------------------------------------------------------------
         # 8. Parse inline annotations + post comments
         # ----------------------------------------------------------------
         if use_inline:
@@ -480,8 +491,18 @@ class Reviewer:
                     summary_text += f"\n\n**📍 `{ann['path']}` line {ann['line']}**\n{ann['body']}"
 
         # ----------------------------------------------------------------
-        # 9. Post summary comment
+        # 9. Post summary comment (with walkthrough header)
         # ----------------------------------------------------------------
+        risk_label = (
+            "🔴 HIGH" if risk_score >= 70
+            else "🟡 MEDIUM" if risk_score >= 40
+            else "🟢 LOW"
+        )
+        header_parts = [f"**Risk Score:** {risk_label} ({risk_score}/100)"]
+        if walkthrough:
+            header_parts = [f"## MR Walkthrough\n\n{walkthrough}", header_parts[0]]
+        summary_text = "\n\n".join(header_parts) + "\n\n---\n\n" + summary_text
+
         summary_comment = _format_summary_comment(summary_text, inline_count=len(inline_comments))
         await gitlab.post_mr_note(job.project_id, job.mr_iid, summary_comment)
         record.status = "posted"
@@ -657,4 +678,76 @@ def _severity_count(review_text: str) -> dict[str, int]:
     return {
         "critical": text_upper.count("[CRITICAL]"),
         "high": text_upper.count("[HIGH]"),
+        "medium": text_upper.count("[MEDIUM]"),
     }
+
+
+_SENSITIVE_PATHS = (
+    "security", "auth", "login", "password", "secret",
+    "token", "crypto", "permission", "oauth", "jwt",
+)
+
+
+def _compute_risk_score(
+    mr_info: MRInfo,
+    diffs: list[FileDiff],
+    review_text: str,
+) -> int:
+    """Compute a deterministic 0-100 risk score without an LLM call.
+
+    Factors: diff size, number of files, sensitive paths, severity findings, draft status.
+    """
+    score = 0
+
+    # Diff size (lines changed)
+    total_lines = sum(d.diff.count("\n") for d in diffs)
+    if total_lines > 500:
+        score += 20
+    elif total_lines > 200:
+        score += 10
+    elif total_lines > 50:
+        score += 5
+
+    # Number of files changed
+    if len(diffs) > 20:
+        score += 15
+    elif len(diffs) > 10:
+        score += 8
+    elif len(diffs) > 5:
+        score += 4
+
+    # Sensitive path heuristic
+    if any(
+        any(s in (d.new_path or "").lower() for s in _SENSITIVE_PATHS)
+        for d in diffs
+    ):
+        score += 20
+
+    # Severity findings from review text
+    sev = _severity_count(review_text)
+    score += sev.get("critical", 0) * 15
+    score += sev.get("high", 0) * 8
+    score += sev.get("medium", 0) * 3
+
+    # Draft MR is lower priority
+    if mr_info.is_draft:
+        score -= 10
+
+    return max(0, min(100, score))
+
+
+async def _generate_summary(llm: LLMClient, user_message: str) -> str:
+    """Generate a 3-5 sentence walkthrough summary via a separate LLM call."""
+    system_prompt = (
+        "You are a senior engineer reviewing a merge request.\n"
+        "Write a concise walkthrough in 3-5 sentences:\n"
+        "1. What this MR changes (functionality, not just file names)\n"
+        "2. The approach/pattern used\n"
+        "3. Any obvious risks or concerns\n"
+        "Be direct. Output plain text only, no bullet points, no headers."
+    )
+    try:
+        return await llm.chat(system_prompt, user_message, temperature=0.1)
+    except Exception:
+        logger.warning("Failed to generate MR summary", exc_info=True)
+        return ""
