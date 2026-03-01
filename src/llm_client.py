@@ -9,6 +9,8 @@ from dataclasses import dataclass, field
 
 import httpx
 
+from .utils.retry import with_retry
+
 logger = logging.getLogger(__name__)
 
 
@@ -120,27 +122,30 @@ class LLMClient:
             ],
         }
 
-        # Try OpenAI-compat endpoint first (ollama ≥0.1.24, vllm, llama.cpp)
-        url = f"{self._base}/v1/chat/completions"
-        try:
-            resp = await self._client.post(url, json=payload)
+        async def _call() -> str:
+            # Try OpenAI-compat endpoint first (ollama ≥0.1.24, vllm, llama.cpp)
+            url = f"{self._base}/v1/chat/completions"
+            try:
+                resp = await self._client.post(url, json=payload)
+                resp.raise_for_status()
+                data = resp.json()
+                return data["choices"][0]["message"]["content"]
+            except (httpx.HTTPStatusError, KeyError):
+                # Fall back to native ollama /api/chat
+                logger.debug("OpenAI-compat endpoint failed, trying ollama native /api/chat")
+
+            ollama_payload = {
+                "model": self._model,
+                "stream": False,
+                "options": {"temperature": temperature},
+                "messages": payload["messages"],
+            }
+            resp = await self._client.post(f"{self._base}/api/chat", json=ollama_payload)
             resp.raise_for_status()
             data = resp.json()
-            return data["choices"][0]["message"]["content"]
-        except (httpx.HTTPStatusError, KeyError):
-            # Fall back to native ollama /api/chat
-            logger.debug("OpenAI-compat endpoint failed, trying ollama native /api/chat")
+            return data["message"]["content"]
 
-        ollama_payload = {
-            "model": self._model,
-            "stream": False,
-            "options": {"temperature": temperature},
-            "messages": payload["messages"],
-        }
-        resp = await self._client.post(f"{self._base}/api/chat", json=ollama_payload)
-        resp.raise_for_status()
-        data = resp.json()
-        return data["message"]["content"]
+        return await with_retry(_call)
 
     async def chat_stream(
         self,

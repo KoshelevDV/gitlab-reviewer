@@ -9,6 +9,8 @@ from urllib.parse import quote
 
 import httpx
 
+from .utils.retry import with_retry
+
 logger = logging.getLogger(__name__)
 
 
@@ -157,21 +159,26 @@ class GitLabClient:
     # ------------------------------------------------------------------
 
     async def get_mr(self, project_id: int | str, mr_iid: int) -> MRInfo:
-        pid = quote(str(project_id), safe="")
-        resp = await self._client.get(f"{self._base}/api/v4/projects/{pid}/merge_requests/{mr_iid}")
-        resp.raise_for_status()
-        d = resp.json()
-        return MRInfo(
-            project_id=project_id,
-            iid=mr_iid,
-            title=d["title"],
-            description=d.get("description") or "",
-            author=d["author"]["username"],
-            source_branch=d["source_branch"],
-            target_branch=d["target_branch"],
-            is_draft=d.get("draft", False) or d["title"].lower().startswith(("draft:", "wip:")),
-            web_url=d["web_url"],
-        )
+        async def _fetch() -> MRInfo:
+            pid = quote(str(project_id), safe="")
+            resp = await self._client.get(
+                f"{self._base}/api/v4/projects/{pid}/merge_requests/{mr_iid}"
+            )
+            resp.raise_for_status()
+            d = resp.json()
+            return MRInfo(
+                project_id=project_id,
+                iid=mr_iid,
+                title=d["title"],
+                description=d.get("description") or "",
+                author=d["author"]["username"],
+                source_branch=d["source_branch"],
+                target_branch=d["target_branch"],
+                is_draft=d.get("draft", False) or d["title"].lower().startswith(("draft:", "wip:")),
+                web_url=d["web_url"],
+            )
+
+        return await with_retry(_fetch)
 
     # ------------------------------------------------------------------
     # Diffs
@@ -185,11 +192,16 @@ class GitLabClient:
         page = 1
 
         while True:
-            resp = await self._client.get(
-                f"{self._base}/api/v4/projects/{pid}/merge_requests/{mr_iid}/diffs",
-                params={"page": page, "per_page": 100},
-            )
-            resp.raise_for_status()
+
+            async def _fetch_page(p: int = page) -> httpx.Response:
+                r = await self._client.get(
+                    f"{self._base}/api/v4/projects/{pid}/merge_requests/{mr_iid}/diffs",
+                    params={"page": p, "per_page": 100},
+                )
+                r.raise_for_status()
+                return r
+
+            resp = await with_retry(_fetch_page)
             page_data = resp.json()
             if not page_data:
                 break
@@ -220,12 +232,16 @@ class GitLabClient:
     # ------------------------------------------------------------------
 
     async def post_mr_note(self, project_id: int | str, mr_iid: int, body: str) -> None:
-        pid = quote(str(project_id), safe="")
-        resp = await self._client.post(
-            f"{self._base}/api/v4/projects/{pid}/merge_requests/{mr_iid}/notes",
-            json={"body": body},
-        )
-        resp.raise_for_status()
+        async def _post() -> httpx.Response:
+            pid = quote(str(project_id), safe="")
+            r = await self._client.post(
+                f"{self._base}/api/v4/projects/{pid}/merge_requests/{mr_iid}/notes",
+                json={"body": body},
+            )
+            r.raise_for_status()
+            return r
+
+        resp = await with_retry(_post)
         logger.info(
             "Posted review comment to project=%s MR!%d (note id=%s)",
             project_id,
@@ -283,9 +299,12 @@ class GitLabClient:
         if position is None:
             return await self.post_mr_note(project_id, mr_iid, body)
 
-        pid = quote(str(project_id), safe="")
-        resp = await self._client.post(
-            f"{self._base}/api/v4/projects/{pid}/merge_requests/{mr_iid}/discussions",
-            json={"body": body, "position": position},
-        )
-        resp.raise_for_status()
+        async def _post() -> None:
+            pid = quote(str(project_id), safe="")
+            r = await self._client.post(
+                f"{self._base}/api/v4/projects/{pid}/merge_requests/{mr_iid}/discussions",
+                json={"body": body, "position": position},
+            )
+            r.raise_for_status()
+
+        await with_retry(_post)

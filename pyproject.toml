@@ -17,6 +17,7 @@ dependencies = [
     "aiofiles>=23.0",
     "aiosqlite>=0.20",
     "prometheus-client>=0.20",
+    "tenacity>=8.2",
 ]
 
 [project.optional-dependencies]
