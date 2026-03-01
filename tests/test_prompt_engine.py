@@ -225,3 +225,42 @@ class TestCacheInvalidation:
 
         # Cache must have been cleared by invalidate_cache()
         assert len(pe._cache) == 0
+
+
+class TestLanguageSupplement:
+    def test_returns_none_for_unknown_language(self, prompt_engine):
+        result = prompt_engine.get_language_supplement("cobol")
+        assert result is None
+
+    def test_returns_content_for_existing_lang(self, prompts_dir):
+        from src.prompt_engine import PromptEngine
+
+        lang_file = prompts_dir / "system" / "lang_testalpha.md"
+        lang_file.write_text("# Test language guidelines\nBe careful.")
+        pe = PromptEngine(str(prompts_dir))
+        result = pe.get_language_supplement("testalpha")
+        assert result is not None
+        assert "Test language guidelines" in result
+
+    def test_real_python_lang_prompt_loadable(self):
+        """Verify the shipped lang_python.md loads without errors."""
+        import pathlib
+
+        prompts_root = pathlib.Path(__file__).parent.parent / "prompts"
+        from src.prompt_engine import PromptEngine
+
+        pe = PromptEngine(str(prompts_root))
+        result = pe.get_language_supplement("python")
+        assert result is not None
+        assert len(result) > 100
+
+    def test_real_rust_lang_prompt_loadable(self):
+        import pathlib
+
+        prompts_root = pathlib.Path(__file__).parent.parent / "prompts"
+        from src.prompt_engine import PromptEngine
+
+        pe = PromptEngine(str(prompts_root))
+        result = pe.get_language_supplement("rust")
+        assert result is not None
+        assert "ownership" in result.lower() or "borrow" in result.lower()

@@ -536,3 +536,48 @@ class TestIncrementalReview:
         records, _ = await db.list_reviews()
         assert any(r.status == "posted" for r in records)
         mock_gitlab.get_diffs.assert_called()
+
+
+class TestDetectLanguage:
+    def _diff(self, path: str) -> FileDiff:
+        return FileDiff(old_path=path, new_path=path, diff="", new_file=False,
+                        deleted_file=False, renamed_file=False)
+
+    def test_detects_python(self):
+        from src.reviewer import _detect_language
+        diffs = [self._diff(f"mod{i}.py") for i in range(5)]
+        assert _detect_language(diffs) == "python"
+
+    def test_detects_rust(self):
+        from src.reviewer import _detect_language
+        diffs = [self._diff("src/main.rs"), self._diff("src/lib.rs"),
+                 self._diff("src/utils.rs")]
+        assert _detect_language(diffs) == "rust"
+
+    def test_detects_typescript(self):
+        from src.reviewer import _detect_language
+        diffs = [self._diff("src/app.tsx"), self._diff("src/index.ts"),
+                 self._diff("src/utils.ts")]
+        assert _detect_language(diffs) == "typescript"
+
+    def test_detects_go(self):
+        from src.reviewer import _detect_language
+        diffs = [self._diff("main.go"), self._diff("handler.go")]
+        assert _detect_language(diffs) == "go"
+
+    def test_returns_none_below_threshold(self):
+        from src.reviewer import _detect_language
+        # Only 1 Python file out of 5 total → below 40% threshold
+        diffs = [self._diff("a.py")] + [self._diff(f"file{i}.txt") for i in range(4)]
+        result = _detect_language(diffs)
+        assert result != "python"
+
+    def test_returns_none_for_unknown_extensions(self):
+        from src.reviewer import _detect_language
+        diffs = [self._diff("Makefile"), self._diff("README.md")]
+        assert _detect_language(diffs) is None
+
+    def test_javascript_maps_to_typescript(self):
+        from src.reviewer import _detect_language
+        diffs = [self._diff("app.js"), self._diff("index.js"), self._diff("utils.js")]
+        assert _detect_language(diffs) == "typescript"

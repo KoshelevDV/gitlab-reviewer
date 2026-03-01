@@ -61,8 +61,8 @@ class PromptEngine:
           - "{{include: performance}}"   # also supported inline
     """
 
-    def __init__(self, prompts_dir: Path) -> None:
-        self._dir = prompts_dir
+    def __init__(self, prompts_dir: Path | str) -> None:
+        self._dir = Path(prompts_dir)
         self._cache: dict[str, str] = {}
 
     # ------------------------------------------------------------------
@@ -129,6 +129,19 @@ class PromptEngine:
     def fingerprint(self, text: str) -> str:
         """SHA-256 of text — used for dedup caching."""
         return hashlib.sha256(text.encode()).hexdigest()
+
+    def get_language_supplement(self, lang: str) -> str | None:
+        """Return the content of lang_<lang>.md if it exists, else None.
+
+        Used by the reviewer to append language-specific review guidelines
+        when the dominant language of the MR diff can be detected.
+        """
+        prompt_name = f"lang_{lang}"
+        try:
+            content = self._load_resolved(prompt_name, seen=set())
+            return content if content else None
+        except Exception:
+            return None
 
     # ------------------------------------------------------------------
     # Internal helpers
