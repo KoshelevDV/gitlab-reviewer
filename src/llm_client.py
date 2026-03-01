@@ -136,7 +136,7 @@ class LLMClient:
         }
 
         async def _call() -> str:
-            # Try OpenAI-compat endpoint first (ollama ≥0.1.24, vllm, llama.cpp)
+            # Try OpenAI-compat endpoint first (ollama ≥0.1.24, vllm, llama.cpp, OpenRouter, etc.)
             url = f"{self._base}/v1/chat/completions"
             try:
                 resp = await self._client.post(url, json=payload)
@@ -144,11 +144,15 @@ class LLMClient:
                 data = resp.json()
                 return data["choices"][0]["message"]["content"]
             except httpx.HTTPStatusError as _http_err:
-                # Fall back to native ollama /api/chat only on HTTP-level errors
-                # (e.g. 404 when ollama < 0.1.24 doesn't expose /v1/ yet)
+                status = _http_err.response.status_code
+                if status != 404:
+                    # Re-raise rate limits (429), auth errors (401/403), server errors (5xx)
+                    # — do NOT fall back to Ollama native API for these
+                    raise
+                # 404 only: fall back to native ollama /api/chat
+                # (ollama < 0.1.24 doesn't expose /v1/ yet)
                 logger.debug(
-                    "OpenAI-compat endpoint HTTP error (%s), trying ollama native /api/chat",
-                    _http_err.response.status_code,
+                    "OpenAI-compat endpoint returned 404, trying ollama native /api/chat",
                 )
             except (KeyError, TypeError) as _fmt_err:
                 # Response came back 200 but in unexpected format — log and fall back

@@ -74,7 +74,7 @@ queue:
 # ---------------------------------------------------------------------------
 # Review settings
 # ---------------------------------------------------------------------------
-review_cooldown_minutes: 5
+review_cooldown_minutes: 2
 max_files_per_review: 50
 file_exclude:
   - "*.lock"
