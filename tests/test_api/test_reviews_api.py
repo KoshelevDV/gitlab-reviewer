@@ -158,6 +158,7 @@ class TestWeeklyStats:
 
     async def test_weekly_stats_counts_match_saved(self, app, db):
         from src.db import ReviewRecord
+
         await db.save_review(ReviewRecord(project_id="1", mr_iid=1, status="posted"))
         await db.save_review(ReviewRecord(project_id="1", mr_iid=2, status="error"))
         r = await app.get("/api/v1/reviews/stats/weekly")
@@ -185,6 +186,7 @@ class TestCSVExport:
 
     async def test_export_csv_includes_saved_review(self, app, db):
         from src.db import ReviewRecord
+
         await db.save_review(
             ReviewRecord(project_id="99", mr_iid=42, status="posted", author="tester")
         )

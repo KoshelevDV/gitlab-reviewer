@@ -126,15 +126,15 @@ async def _handle_note_hook(body: dict[str, Any], cfg) -> JSONResponse:  # type:
     # Execute slash command asynchronously (background task)
     import asyncio
 
-    asyncio.get_event_loop().create_task(
-        _run_slash_command(cmd, raw_project_id, raw_mr_iid, cfg)
+    asyncio.get_event_loop().create_task(_run_slash_command(cmd, raw_project_id, raw_mr_iid, cfg))
+    return JSONResponse(
+        {
+            "status": "accepted",
+            "command": cmd.name,
+            "project_id": raw_project_id,
+            "mr_iid": raw_mr_iid,
+        }
     )
-    return JSONResponse({
-        "status": "accepted",
-        "command": cmd.name,
-        "project_id": raw_project_id,
-        "mr_iid": raw_mr_iid,
-    })
 
 
 async def _run_slash_command(cmd, project_id, mr_iid, cfg) -> None:  # type: ignore[no-untyped-def]
@@ -166,12 +166,12 @@ async def _run_slash_command(cmd, project_id, mr_iid, cfg) -> None:  # type: ign
             await gitlab.aclose()
         logger.info(
             "Slash command /%s reply posted: project=%s MR!%d",
-            cmd.name, project_id, mr_iid,
+            cmd.name,
+            project_id,
+            mr_iid,
         )
     except Exception:
-        logger.exception(
-            "Slash command /%s failed: project=%s MR!%d", cmd.name, project_id, mr_iid
-        )
+        logger.exception("Slash command /%s failed: project=%s MR!%d", cmd.name, project_id, mr_iid)
 
 
 def _verify_token(received: str | None, expected: str) -> bool:

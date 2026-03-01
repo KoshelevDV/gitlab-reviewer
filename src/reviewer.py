@@ -67,6 +67,7 @@ def unregister_stream(job_id: int) -> None:
     _live_streams.pop(job_id, None)
     _stream_buffers.pop(job_id, None)
 
+
 _db: Database | None = None
 
 
@@ -396,9 +397,7 @@ class Reviewer:
                 current_version_id = int(versions[0].get("id") or 0)
                 record.mr_version_id = current_version_id
                 if _db is not None:
-                    _prev_ver = await _db.get_last_mr_version_id(
-                        job.project_id, job.mr_iid
-                    )
+                    _prev_ver = await _db.get_last_mr_version_id(job.project_id, job.mr_iid)
                     last_version_id = _prev_ver if _prev_ver is not None else 0
                 if last_version_id and last_version_id < current_version_id:
                     # Incremental: use repository/compare for the true delta between
@@ -423,9 +422,13 @@ class Reviewer:
                         logger.info(
                             "Incremental review: version %d → %d (%s..%s, %d files) "
                             "project=%s MR!%d",
-                            last_version_id, current_version_id,
-                            prev_sha[:8], current_sha[:8], len(diffs),
-                            job.project_id, job.mr_iid,
+                            last_version_id,
+                            current_version_id,
+                            prev_sha[:8],
+                            current_sha[:8],
+                            len(diffs),
+                            job.project_id,
+                            job.mr_iid,
                         )
         except Exception:
             logger.debug("MR Versions API unavailable, falling back to full diff", exc_info=True)
@@ -470,7 +473,9 @@ class Reviewer:
                 system_prompt = system_prompt + "\n\n" + lang_supplement
                 logger.info(
                     "Language-aware prompt applied: %s — project=%s MR!%d",
-                    detected_lang, job.project_id, job.mr_iid,
+                    detected_lang,
+                    job.project_id,
+                    job.mr_iid,
                 )
 
         # ----------------------------------------------------------------
@@ -536,7 +541,9 @@ class Reviewer:
         record.risk_score = risk_score
         logger.info(
             "Risk score: %d — project=%s MR!%d",
-            risk_score, job.project_id, job.mr_iid,
+            risk_score,
+            job.project_id,
+            job.mr_iid,
         )
 
         # ----------------------------------------------------------------
@@ -553,13 +560,11 @@ class Reviewer:
             # Build per-file diff line maps so we can validate line numbers and
             # supply old_line for context lines (required by GitLab Discussions API).
             diff_line_maps: dict[str, dict[int, int | None]] = {
-                (d.new_path or d.old_path): _parse_diff_line_map(d.diff)
-                for d in diffs
+                (d.new_path or d.old_path): _parse_diff_line_map(d.diff) for d in diffs
             }
             # Content map for comment-line detection (snap to next real code line).
             diff_content_maps: dict[str, dict[int, str]] = {
-                (d.new_path or d.old_path): _build_diff_content_map(d.diff)
-                for d in diffs
+                (d.new_path or d.old_path): _build_diff_content_map(d.diff) for d in diffs
             }
 
             # Fetch diff refs needed for positional comments
@@ -573,8 +578,7 @@ class Reviewer:
                     if not file_map:
                         # File not in diff at all → fall back to summary
                         logger.debug(
-                            "Inline comment: file '%s' not found in diff map; "
-                            "moving to summary",
+                            "Inline comment: file '%s' not found in diff map; moving to summary",
                             ann["path"],
                         )
                         summary_text += (
@@ -661,9 +665,7 @@ class Reviewer:
         # 9. Post summary comment (with walkthrough header)
         # ----------------------------------------------------------------
         risk_label = (
-            "🔴 HIGH" if risk_score >= 70
-            else "🟡 MEDIUM" if risk_score >= 40
-            else "🟢 LOW"
+            "🔴 HIGH" if risk_score >= 70 else "🟡 MEDIUM" if risk_score >= 40 else "🟢 LOW"
         )
         header_parts = [f"**Risk Score:** {risk_label} ({risk_score}/100)"]
         if incremental:
@@ -967,18 +969,25 @@ def _format_summary_comment(summary_text: str, inline_count: int) -> str:
 
 
 _EXT_TO_LANG: dict[str, str] = {
-    ".py": "python", ".pyi": "python",
+    ".py": "python",
+    ".pyi": "python",
     ".rs": "rust",
-    ".ts": "typescript", ".tsx": "typescript",
-    ".js": "typescript", ".jsx": "typescript",  # reuse TS guidelines
+    ".ts": "typescript",
+    ".tsx": "typescript",
+    ".js": "typescript",
+    ".jsx": "typescript",  # reuse TS guidelines
     ".go": "go",
     ".java": "java",
     ".rb": "ruby",
     ".php": "php",
     ".cs": "csharp",
-    ".cpp": "cpp", ".cc": "cpp", ".cxx": "cpp",
-    ".h": "cpp", ".hpp": "cpp",
-    ".kt": "kotlin", ".kts": "kotlin",
+    ".cpp": "cpp",
+    ".cc": "cpp",
+    ".cxx": "cpp",
+    ".h": "cpp",
+    ".hpp": "cpp",
+    ".kt": "kotlin",
+    ".kts": "kotlin",
     ".swift": "swift",
 }
 
@@ -1020,8 +1029,16 @@ def _severity_count(review_text: str) -> dict[str, int]:
 
 
 _SENSITIVE_PATHS = (
-    "security", "auth", "login", "password", "secret",
-    "token", "crypto", "permission", "oauth", "jwt",
+    "security",
+    "auth",
+    "login",
+    "password",
+    "secret",
+    "token",
+    "crypto",
+    "permission",
+    "oauth",
+    "jwt",
 )
 
 
@@ -1054,10 +1071,7 @@ def _compute_risk_score(
         score += 4
 
     # Sensitive path heuristic
-    if any(
-        any(s in (d.new_path or "").lower() for s in _SENSITIVE_PATHS)
-        for d in diffs
-    ):
+    if any(any(s in (d.new_path or "").lower() for s in _SENSITIVE_PATHS) for d in diffs):
         score += 20
 
     # Severity findings from review text

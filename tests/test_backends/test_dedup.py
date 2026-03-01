@@ -73,9 +73,7 @@ class TestDedupCacheLoadFromDB:
         from unittest.mock import AsyncMock, MagicMock
 
         db = MagicMock()
-        db.list_diff_hashes = AsyncMock(
-            return_value=[("42", 7, "hash1"), ("42", 8, "hash2")]
-        )
+        db.list_diff_hashes = AsyncMock(return_value=[("42", 7, "hash1"), ("42", 8, "hash2")])
         c = DedupCache()
         count = await c.load_from_db(db)
         assert count == 2

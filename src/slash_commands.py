@@ -32,8 +32,8 @@ _COMMAND_RE = re.compile(
 
 @dataclass
 class SlashCommand:
-    name: str   # lowercase: ask | improve | summary | help
-    args: str   # everything after the command name, stripped
+    name: str  # lowercase: ask | improve | summary | help
+    args: str  # everything after the command name, stripped
 
     KNOWN: ClassVar[frozenset[str]] = frozenset({"ask", "improve", "summary", "help"})
 

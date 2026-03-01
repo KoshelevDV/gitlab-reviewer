@@ -213,10 +213,18 @@ class TestMRVersions:
     @respx.mock
     async def test_get_mr_versions_returns_list(self, client):
         payload = [
-            {"id": 3, "head_commit_sha": "abc", "base_commit_sha": "def",
-             "start_commit_sha": "ghi"},
-            {"id": 2, "head_commit_sha": "xxx", "base_commit_sha": "yyy",
-             "start_commit_sha": "zzz"},
+            {
+                "id": 3,
+                "head_commit_sha": "abc",
+                "base_commit_sha": "def",
+                "start_commit_sha": "ghi",
+            },
+            {
+                "id": 2,
+                "head_commit_sha": "xxx",
+                "base_commit_sha": "yyy",
+                "start_commit_sha": "zzz",
+            },
         ]
         respx.get(f"{BASE}/api/v4/projects/10/merge_requests/5/versions").mock(
             return_value=Response(200, json=payload)
@@ -241,9 +249,12 @@ class TestMRVersions:
             "id": 3,
             "diffs": [
                 {
-                    "old_path": "a.py", "new_path": "a.py",
-                    "diff": "+x = 1", "new_file": False,
-                    "deleted_file": False, "renamed_file": False,
+                    "old_path": "a.py",
+                    "new_path": "a.py",
+                    "diff": "+x = 1",
+                    "new_file": False,
+                    "deleted_file": False,
+                    "renamed_file": False,
                 }
             ],
         }

@@ -68,8 +68,8 @@ class ReviewRecord:
     skip_reason: str = ""
     auto_approved: bool = False
     inline_count: int = 0  # number of inline GitLab discussion comments posted
-    risk_score: int = 0      # deterministic 0-100 risk score (no LLM)
-    mr_version_id: int = 0   # GitLab MR diff version ID at time of review
+    risk_score: int = 0  # deterministic 0-100 risk score (no LLM)
+    mr_version_id: int = 0  # GitLab MR diff version ID at time of review
     id: int = 0
     created_at: str = ""
 
@@ -316,9 +316,7 @@ class Database:
         except ValueError:
             return None
 
-    async def get_last_mr_version_id(
-        self, project_id: str | int, mr_iid: int
-    ) -> int | None:
+    async def get_last_mr_version_id(self, project_id: str | int, mr_iid: int) -> int | None:
         """Return the GitLab MR version_id from the most recent review for this MR.
 
         Returns None if no previous review exists or version was not recorded (legacy row).

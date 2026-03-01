@@ -165,10 +165,17 @@ class TestGetLastMRVersionId:
         from src.db import ReviewRecord
 
         rec = ReviewRecord(
-            project_id="42", mr_iid=7, mr_title="T", mr_url="",
-            author="a", source_branch="f", target_branch="main",
-            diff_hash="h", prompt_names=["default"],
-            review_text="ok", status="posted",
+            project_id="42",
+            mr_iid=7,
+            mr_title="T",
+            mr_url="",
+            author="a",
+            source_branch="f",
+            target_branch="main",
+            diff_hash="h",
+            prompt_names=["default"],
+            review_text="ok",
+            status="posted",
             mr_version_id=5,
         )
         await db.save_review(rec)
@@ -179,10 +186,17 @@ class TestGetLastMRVersionId:
         from src.db import ReviewRecord
 
         rec = ReviewRecord(
-            project_id="42", mr_iid=7, mr_title="T", mr_url="",
-            author="a", source_branch="f", target_branch="main",
-            diff_hash="h", prompt_names=["default"],
-            review_text="", status="skipped",
+            project_id="42",
+            mr_iid=7,
+            mr_title="T",
+            mr_url="",
+            author="a",
+            source_branch="f",
+            target_branch="main",
+            diff_hash="h",
+            prompt_names=["default"],
+            review_text="",
+            status="skipped",
             mr_version_id=3,
         )
         await db.save_review(rec)
@@ -194,10 +208,17 @@ class TestGetLastMRVersionId:
 
         for vid in [1, 2, 3]:
             rec = ReviewRecord(
-                project_id="42", mr_iid=7, mr_title="T", mr_url="",
-                author="a", source_branch="f", target_branch="main",
-                diff_hash=f"h{vid}", prompt_names=["default"],
-                review_text="ok", status="posted",
+                project_id="42",
+                mr_iid=7,
+                mr_title="T",
+                mr_url="",
+                author="a",
+                source_branch="f",
+                target_branch="main",
+                diff_hash=f"h{vid}",
+                prompt_names=["default"],
+                review_text="ok",
+                status="posted",
                 mr_version_id=vid,
             )
             await db.save_review(rec)

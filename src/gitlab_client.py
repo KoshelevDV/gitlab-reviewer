@@ -227,9 +227,7 @@ class GitLabClient:
 
         return diffs
 
-    async def get_mr_versions(
-        self, project_id: int | str, mr_iid: int
-    ) -> list[dict]:
+    async def get_mr_versions(self, project_id: int | str, mr_iid: int) -> list[dict]:
         """Return all MR diff versions, newest first.
 
         Each entry has: id, head_commit_sha, start_commit_sha, base_commit_sha.

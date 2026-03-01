@@ -131,9 +131,7 @@ class TestTriggerReview:
         qm.enqueue = AsyncMock(return_value=True)
         set_queue_manager(qm)
 
-        r = await client.post(
-            "/api/v1/queue/review", json={"project_id": 1, "mr_iid": 10}
-        )
+        r = await client.post("/api/v1/queue/review", json={"project_id": 1, "mr_iid": 10})
         assert r.status_code == 202
         assert r.json()["status"] == "queued"
 
@@ -142,15 +140,11 @@ class TestTriggerReview:
         qm.enqueue = AsyncMock(return_value=False)
         set_queue_manager(qm)
 
-        r = await client.post(
-            "/api/v1/queue/review", json={"project_id": 1, "mr_iid": 10}
-        )
+        r = await client.post("/api/v1/queue/review", json={"project_id": 1, "mr_iid": 10})
         assert r.status_code == 429
 
     async def test_review_returns_503_without_manager(self, client):
-        r = await client.post(
-            "/api/v1/queue/review", json={"project_id": 1, "mr_iid": 10}
-        )
+        r = await client.post("/api/v1/queue/review", json={"project_id": 1, "mr_iid": 10})
         assert r.status_code == 503
 
 

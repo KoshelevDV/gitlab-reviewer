@@ -112,9 +112,18 @@ async def export_csv():  # type: ignore[no-untyped-def]
 
     recs, _ = await _db.list_reviews(limit=100_000, offset=0)
     fields = [
-        "id", "project_id", "mr_iid", "mr_title", "author",
-        "source_branch", "target_branch", "status", "skip_reason",
-        "auto_approved", "inline_count", "created_at",
+        "id",
+        "project_id",
+        "mr_iid",
+        "mr_title",
+        "author",
+        "source_branch",
+        "target_branch",
+        "status",
+        "skip_reason",
+        "auto_approved",
+        "inline_count",
+        "created_at",
     ]
     buf = io.StringIO()
     writer = csv.DictWriter(buf, fieldnames=fields, extrasaction="ignore")

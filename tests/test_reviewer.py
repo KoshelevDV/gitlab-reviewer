@@ -383,45 +383,60 @@ class TestSeverityCount:
 class TestRiskScore:
     def _mr(self, is_draft=False):
         return MRInfo(
-            project_id=1, iid=1, title="T", description="",
-            author="dev", source_branch="feat", target_branch="main",
-            is_draft=is_draft, web_url="http://gl/mr/1",
+            project_id=1,
+            iid=1,
+            title="T",
+            description="",
+            author="dev",
+            source_branch="feat",
+            target_branch="main",
+            is_draft=is_draft,
+            web_url="http://gl/mr/1",
         )
 
     def _diff(self, path="main.py", lines=10):
         from src.gitlab_client import FileDiff
+
         return FileDiff(
-            old_path=path, new_path=path,
-            diff="\n" * lines, new_file=False,
-            deleted_file=False, renamed_file=False,
+            old_path=path,
+            new_path=path,
+            diff="\n" * lines,
+            new_file=False,
+            deleted_file=False,
+            renamed_file=False,
         )
 
     def test_zero_for_trivial_mr(self):
         from src.reviewer import _compute_risk_score
+
         mr = self._mr()
         score = _compute_risk_score(mr, [self._diff(lines=5)], "Looks good.")
         assert score == 0
 
     def test_large_diff_increases_score(self):
         from src.reviewer import _compute_risk_score
+
         mr = self._mr()
         score = _compute_risk_score(mr, [self._diff(lines=600)], "Looks good.")
         assert score >= 20
 
     def test_sensitive_path_increases_score(self):
         from src.reviewer import _compute_risk_score
+
         mr = self._mr()
         score = _compute_risk_score(mr, [self._diff(path="auth/login.py", lines=5)], "")
         assert score >= 20
 
     def test_critical_finding_increases_score(self):
         from src.reviewer import _compute_risk_score
+
         mr = self._mr()
         score = _compute_risk_score(mr, [self._diff()], "- [CRITICAL] SQL injection found")
         assert score >= 15
 
     def test_draft_reduces_score(self):
         from src.reviewer import _compute_risk_score
+
         mr_draft = self._mr(is_draft=True)
         mr_normal = self._mr(is_draft=False)
         s_draft = _compute_risk_score(mr_draft, [self._diff(lines=300)], "")
@@ -430,6 +445,7 @@ class TestRiskScore:
 
     def test_score_clamped_to_100(self):
         from src.reviewer import _compute_risk_score
+
         mr = self._mr()
         diffs = [self._diff(path=f"security/auth{i}.py", lines=600) for i in range(5)]
         text = "- [CRITICAL] issue\n" * 10
@@ -438,11 +454,13 @@ class TestRiskScore:
 
     def test_medium_finding_increases_score(self):
         from src.reviewer import _compute_risk_score
+
         score = _compute_risk_score(self._mr(), [], "- [MEDIUM] minor issue\n" * 3)
         assert score >= 9
 
     def test_score_clamped_to_0(self):
         from src.reviewer import _compute_risk_score
+
         mr = self._mr(is_draft=True)
         score = _compute_risk_score(mr, [], "")
         assert score >= 0
@@ -460,10 +478,17 @@ class TestIncrementalReview:
 
         # Seed the DB with a previous review at version 1
         rec = ReviewRecord(
-            project_id="42", mr_iid=7, mr_title="T", mr_url="",
-            author="a", source_branch="f", target_branch="main",
-            diff_hash="old", prompt_names=["default"],
-            review_text="old review", status="posted",
+            project_id="42",
+            mr_iid=7,
+            mr_title="T",
+            mr_url="",
+            author="a",
+            source_branch="f",
+            target_branch="main",
+            diff_hash="old",
+            prompt_names=["default"],
+            review_text="old review",
+            status="posted",
             mr_version_id=1,
         )
         await db.save_review(rec)
@@ -471,15 +496,21 @@ class TestIncrementalReview:
         # get_mr_versions returns both versions so reviewer can find prev sha
         mock_gitlab.get_mr_versions = AsyncMock(
             return_value=[
-                {"id": 2, "head_commit_sha": "sha_new", "base_commit_sha": "b",
-                 "start_commit_sha": "s"},
-                {"id": 1, "head_commit_sha": "sha_old", "base_commit_sha": "b",
-                 "start_commit_sha": "s"},
+                {
+                    "id": 2,
+                    "head_commit_sha": "sha_new",
+                    "base_commit_sha": "b",
+                    "start_commit_sha": "s",
+                },
+                {
+                    "id": 1,
+                    "head_commit_sha": "sha_old",
+                    "base_commit_sha": "b",
+                    "start_commit_sha": "s",
+                },
             ]
         )
-        incremental_diffs = [
-            FileDiff("changed.py", "changed.py", "+new line", False, False, False)
-        ]
+        incremental_diffs = [FileDiff("changed.py", "changed.py", "+new line", False, False, False)]
         mock_gitlab.compare_commits = AsyncMock(return_value=incremental_diffs)
 
         set_database(db)
@@ -507,8 +538,9 @@ class TestIncrementalReview:
     ):
         """With no previous version in DB, get_diffs (full diff) is used."""
         mock_gitlab.get_mr_versions = AsyncMock(
-            return_value=[{"id": 1, "head_commit_sha": "h", "base_commit_sha": "b",
-                           "start_commit_sha": "s"}]
+            return_value=[
+                {"id": 1, "head_commit_sha": "h", "base_commit_sha": "b", "start_commit_sha": "s"}
+            ]
         )
 
         set_database(db)
@@ -545,33 +577,42 @@ class TestIncrementalReview:
 
 class TestDetectLanguage:
     def _diff(self, path: str) -> FileDiff:
-        return FileDiff(old_path=path, new_path=path, diff="", new_file=False,
-                        deleted_file=False, renamed_file=False)
+        return FileDiff(
+            old_path=path,
+            new_path=path,
+            diff="",
+            new_file=False,
+            deleted_file=False,
+            renamed_file=False,
+        )
 
     def test_detects_python(self):
         from src.reviewer import _detect_language
+
         diffs = [self._diff(f"mod{i}.py") for i in range(5)]
         assert _detect_language(diffs) == "python"
 
     def test_detects_rust(self):
         from src.reviewer import _detect_language
-        diffs = [self._diff("src/main.rs"), self._diff("src/lib.rs"),
-                 self._diff("src/utils.rs")]
+
+        diffs = [self._diff("src/main.rs"), self._diff("src/lib.rs"), self._diff("src/utils.rs")]
         assert _detect_language(diffs) == "rust"
 
     def test_detects_typescript(self):
         from src.reviewer import _detect_language
-        diffs = [self._diff("src/app.tsx"), self._diff("src/index.ts"),
-                 self._diff("src/utils.ts")]
+
+        diffs = [self._diff("src/app.tsx"), self._diff("src/index.ts"), self._diff("src/utils.ts")]
         assert _detect_language(diffs) == "typescript"
 
     def test_detects_go(self):
         from src.reviewer import _detect_language
+
         diffs = [self._diff("main.go"), self._diff("handler.go")]
         assert _detect_language(diffs) == "go"
 
     def test_returns_none_below_threshold(self):
         from src.reviewer import _detect_language
+
         # Only 1 Python file out of 5 total → below 40% threshold
         diffs = [self._diff("a.py")] + [self._diff(f"file{i}.txt") for i in range(4)]
         result = _detect_language(diffs)
@@ -579,11 +620,13 @@ class TestDetectLanguage:
 
     def test_returns_none_for_unknown_extensions(self):
         from src.reviewer import _detect_language
+
         diffs = [self._diff("Makefile"), self._diff("README.md")]
         assert _detect_language(diffs) is None
 
     def test_javascript_maps_to_typescript(self):
         from src.reviewer import _detect_language
+
         diffs = [self._diff("app.js"), self._diff("index.js"), self._diff("utils.js")]
         assert _detect_language(diffs) == "typescript"
 
@@ -617,27 +660,27 @@ class TestParseDiffLineMap:
 
         diff = (
             "@@ -10,4 +10,4 @@\n"
-            " context1\n"     # new=10, old=10
-            "-old line\n"      # deleted → not in map
-            "+new line\n"      # new=11, old=None
-            " context2\n"     # new=12, old=11
+            " context1\n"  # new=10, old=10
+            "-old line\n"  # deleted → not in map
+            "+new line\n"  # new=11, old=None
+            " context2\n"  # new=12, old=11
         )
         m = _parse_diff_line_map(diff)
-        assert m[10] == 10    # context: new=10, old=10
+        assert m[10] == 10  # context: new=10, old=10
         assert m[11] is None  # added:   new=11, no old
-        assert m[12] == 12    # context after deletion: old_cursor skipped 11 (deleted), so old=12
-        assert 13 not in m    # nothing beyond
+        assert m[12] == 12  # context after deletion: old_cursor skipped 11 (deleted), so old=12
+        assert 13 not in m  # nothing beyond
 
     def test_multi_hunk(self):
         from src.reviewer import _parse_diff_line_map
 
         diff = (
             "@@ -1,2 +1,2 @@\n"
-            " ctx\n"        # new=1, old=1
-            "+added1\n"     # new=2, old=None
+            " ctx\n"  # new=1, old=1
+            "+added1\n"  # new=2, old=None
             "@@ -10,1 +10,2 @@\n"
-            " ctx2\n"       # new=10, old=10
-            "+added2\n"     # new=11, old=None
+            " ctx2\n"  # new=10, old=10
+            "+added2\n"  # new=11, old=None
         )
         m = _parse_diff_line_map(diff)
         assert m[1] == 1
@@ -695,27 +738,32 @@ class TestIsCommentContent:
 
     def test_python_comment(self):
         from src.reviewer import _is_comment_content
+
         assert _is_comment_content("# this is a comment") is True
         assert _is_comment_content("    # indented comment") is True
 
     def test_cpp_line_comment(self):
         from src.reviewer import _is_comment_content
+
         assert _is_comment_content("// single line") is True
         assert _is_comment_content("    // indented") is True
 
     def test_block_comment_line(self):
         from src.reviewer import _is_comment_content
+
         assert _is_comment_content("/* start block */") is True
         assert _is_comment_content("* middle of block") is True
 
     def test_code_lines_not_comment(self):
         from src.reviewer import _is_comment_content
+
         assert _is_comment_content('db_password = "supersecret123"') is False
         assert _is_comment_content("def store_config():") is False
         assert _is_comment_content("cursor.execute(query)") is False
 
     def test_empty_line(self):
         from src.reviewer import _is_comment_content
+
         assert _is_comment_content("") is False
         assert _is_comment_content("   ") is False
 
@@ -725,6 +773,7 @@ class TestBuildDiffContentMap:
 
     def test_added_lines_content(self):
         from src.reviewer import _build_diff_content_map
+
         diff = "@@ -0,0 +5,2 @@\n+hello = 1\n+world = 2\n"
         m = _build_diff_content_map(diff)
         assert m[5] == "hello = 1"
@@ -732,12 +781,14 @@ class TestBuildDiffContentMap:
 
     def test_context_line_content(self):
         from src.reviewer import _build_diff_content_map
+
         diff = "@@ -3,1 +3,1 @@\n ctx_line\n"
         m = _build_diff_content_map(diff)
         assert m[3] == "ctx_line"
 
     def test_deleted_lines_excluded(self):
         from src.reviewer import _build_diff_content_map
+
         diff = "@@ -3,1 +3,0 @@\n-removed\n"
         m = _build_diff_content_map(diff)
         # deleted line has no new_line entry

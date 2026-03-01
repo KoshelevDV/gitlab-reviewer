@@ -20,6 +20,7 @@ def set_prompt_engine(pe: PromptEngine) -> None:
     global _prompt_engine  # noqa: PLW0603
     _prompt_engine = pe
 
+
 router = APIRouter(prefix="/api/v1/config", tags=["config"])
 
 _MASKED = "****"

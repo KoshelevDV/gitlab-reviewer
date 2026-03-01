@@ -66,9 +66,12 @@ class TestHelpCommand:
         cmd = SlashCommand(name="help", args="")
         result = await execute_slash_command(
             cmd=cmd,
-            project_id=1, mr_iid=1,
-            gitlab_url="http://fake", gitlab_token="tok",  # noqa: S106
-            llm_base_url="http://fake-llm", llm_api_key="key",
+            project_id=1,
+            mr_iid=1,
+            gitlab_url="http://fake",
+            gitlab_token="tok",  # noqa: S106
+            llm_base_url="http://fake-llm",
+            llm_api_key="key",
             llm_model="gpt-4",
         )
         assert "Slash Commands" in result or "ask" in result.lower()

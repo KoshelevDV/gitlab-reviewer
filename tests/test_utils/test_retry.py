@@ -93,9 +93,7 @@ class TestWithRetry:
         """4xx errors should propagate immediately without retry."""
         resp = MagicMock()
         resp.status_code = 422
-        fn = AsyncMock(
-            side_effect=httpx.HTTPStatusError("422", request=MagicMock(), response=resp)
-        )
+        fn = AsyncMock(side_effect=httpx.HTTPStatusError("422", request=MagicMock(), response=resp))
         with pytest.raises(httpx.HTTPStatusError):
             await with_retry(fn, attempts=3, min_wait=0, max_wait=0)
         fn.assert_awaited_once()  # no retry
