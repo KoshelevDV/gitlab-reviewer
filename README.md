@@ -24,6 +24,12 @@ No data leaves your infrastructure. Everything configured through a **Web UI**.
 - 🧪 Dry-run mode
 - 🐳 Docker Compose (profiles: `valkey`, `kafka`) + Helm chart
 - 💾 Config file as single source of truth — every UI action writes to `config.yml`
+- 📊 **Risk Score** — deterministic 0-100 MR risk badge (no extra LLM call)
+- 📝 **Walkthrough Summary** — 3-5 sentence MR overview before inline comments
+- 🔄 **Incremental review** — only reviews changed files since last version (MR Versions API)
+- 🌍 **Language-aware prompts** — auto-detects Python/Rust/TypeScript/Go, applies specific guidelines
+- 💬 **Slash commands** — post `/ask`, `/improve`, `/summary`, `/help` in MR comments
+- 📡 **SSE streaming** — watch the review generate in real time (`stream=true`)
 
 ---
 

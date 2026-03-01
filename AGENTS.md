@@ -23,9 +23,13 @@ src/
   gitlab_client.py    — GitLab API: get_mr, get_diffs, post_mr_note, list groups/projects/branches
   llm_client.py       — OpenAI-compat chat (ollama / llama.cpp / openai_compat), model listing
   reviewer.py         — Orchestration: filter → sanitise → LLM → comment → persist
-  webhook.py          — FastAPI routes, HMAC check, enqueue (not BackgroundTask anymore)
+                        + risk score, walkthrough summary, incremental review, lang detection
+                        + SSE streaming (_live_streams, _stream_buffers, register_stream)
+  webhook.py          — FastAPI routes, HMAC check, enqueue; Note Hook → slash commands
+  slash_commands.py   — /ask, /improve, /summary, /help command parser + executor
   queue_manager.py    — QueueManager: asyncio.Queue + Semaphore, dedup, stats
-  db.py               — SQLite via aiosqlite: ReviewRecord, CRUD, stats, recent
+  db.py               — SQLite via aiosqlite: ReviewRecord (risk_score, mr_version_id),
+                        CRUD, stats, recent, get_last_mr_version_id()
   ui/
     router.py         — FastAPI routes for UI static files                           [PLANNED v0.2]
     static/
@@ -47,6 +51,11 @@ prompts/
     security.md       — Security checks (injection, auth, crypto, secrets)
     performance.md    — Performance checks (N+1, O(n²), async blocking)
     style.md          — Style / maintainability
+    summary.md        — Walkthrough summary prompt (FT-2)
+    lang_python.md    — Python-specific guidelines (FT-4, auto-applied)
+    lang_rust.md      — Rust-specific guidelines (FT-4)
+    lang_typescript.md — TypeScript/JS-specific guidelines (FT-4)
+    lang_go.md        — Go-specific guidelines (FT-4)
   custom/             — User overrides (gitignored; custom/ wins over system/)
     example_team.md   — Template for team-specific rules
 
@@ -250,3 +259,9 @@ After v0.2: open `http://server:8000/ui/` to configure everything.
 | Valkey distributed queue + cache backend | v0.9 | ✅ Done |
 | Kafka high-volume distributed queue backend | v0.10 | ✅ Done |
 | Code review / bug fixes (7 bugs fixed, see docs/CODE_REVIEW.md) | v0.10.1 | ✅ Done |
+| BATCH B: dry_run, weekly stats, CSV export | v0.11 | ✅ Done |
+| FT-2: Walkthrough Summary + Risk Score (0-100) | v0.11 | ✅ Done |
+| FT-7: SSE streaming review (GET /api/v1/queue/review/{id}/stream) | v0.11 | ✅ Done |
+| FT-3: Incremental review via GitLab MR Versions API | v0.12 | ✅ Done |
+| FT-4: Language-aware prompt auto-selection (Python/Rust/TS/Go) | v0.12 | ✅ Done |
+| FT-1: Slash commands (/ask, /improve, /summary, /help) | v0.12 | ✅ Done |
