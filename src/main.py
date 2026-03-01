@@ -35,11 +35,11 @@ from .api.reviews import router as reviews_router
 from .api.reviews import set_database as reviews_set_db
 from .api.reviews import set_queue_manager as reviews_set_queue
 from .api.targets import router as targets_router
+from .backends import create_queue_manager
 from .config import CONFIG_PATH, reload_config
 from .db import Database
 from .log_buffer import setup_log_buffer
 from .prompt_engine import PromptEngine
-from .queue_manager import QueueManager
 from .reviewer import Reviewer
 from .reviewer import set_database as reviewer_set_db
 from .ui.router import mount_ui
@@ -60,10 +60,11 @@ def create_app() -> FastAPI:
     log_buf = setup_log_buffer(maxlen=cfg.ui.log_buffer_lines)
 
     logger.info(
-        "gitlab-reviewer starting (model=%s, providers=%d, max_concurrent=%d)",
+        "gitlab-reviewer starting (model=%s, providers=%d, max_concurrent=%d, queue=%s)",
         cfg.model.name,
         len(cfg.providers),
         cfg.queue.max_concurrent,
+        cfg.queue.backend,
     )
 
     # ----------------------------------------------------------------
@@ -72,10 +73,7 @@ def create_app() -> FastAPI:
     prompts_dir = (Path(__file__).parent.parent / "prompts").resolve()
     prompts = PromptEngine(prompts_dir)
 
-    queue = QueueManager(
-        max_concurrent=cfg.queue.max_concurrent,
-        max_size=cfg.queue.max_queue_size,
-    )
+    queue = create_queue_manager(cfg)
     reviewer = Reviewer(prompts=prompts, queue=queue)
 
     db = Database(path="data/reviews.db")

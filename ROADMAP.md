@@ -389,5 +389,5 @@ Browser ─────────────┤ GET /ui/                     
 | v0.7c | File Filters | file_exclude globs (global + per-target), vendor/lock defaults | ✅ Done |
 | v0.7d | Cooldown | review_cooldown_minutes per MR, per-target override | ✅ Done |
 | v0.8 | Debounce + Dedup | Latest-wins supersede, diff hash dedup in reviewer, delayed retry | ✅ Done |
-| v0.9 | Valkey | Distributed queue+cache, multi-instance | 📋 Planned |
+| v0.9 | Valkey | Distributed queue+cache, multi-instance | ✅ Done |
 | v0.10 | Kafka | High-volume event streaming | 💡 Optional |

@@ -239,4 +239,4 @@ After v0.2: open `http://server:8000/ui/` to configure everything.
 | Auto-approve via GitLab API (CRITICAL/HIGH check) | v0.4 | ✅ Done |
 | Dashboard — review stats + recent history | v0.4 | ✅ Done |
 | docker-compose Valkey profile | v0.4 | ✅ Done |
-| Valkey distributed queue + cache backend | v0.6 | 💡 Optional |
+| Valkey distributed queue + cache backend | v0.9 | ✅ Done |
