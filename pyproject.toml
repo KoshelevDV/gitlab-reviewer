@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "gitlab-reviewer"
-version = "0.1.0"
+version = "1.0.0"
 description = "Automated GitLab MR review using local LLMs via ollama"
 requires-python = ">=3.11"
 dependencies = [
