@@ -139,3 +139,55 @@ class TestRecent:
         r = await app.get("/api/v1/reviews/recent")
         assert r.status_code == 200
         assert r.json() == []
+
+
+class TestWeeklyStats:
+    async def test_weekly_stats_returns_200(self, app):
+        r = await app.get("/api/v1/reviews/stats/weekly")
+        assert r.status_code == 200
+
+    async def test_weekly_stats_has_required_keys(self, app):
+        r = await app.get("/api/v1/reviews/stats/weekly")
+        data = r.json()
+        for key in ("period_days", "since", "total", "posted", "skipped", "errors"):
+            assert key in data
+
+    async def test_weekly_stats_period_is_7(self, app):
+        r = await app.get("/api/v1/reviews/stats/weekly")
+        assert r.json()["period_days"] == 7
+
+    async def test_weekly_stats_counts_match_saved(self, app, db):
+        from src.db import ReviewRecord
+        await db.save_review(ReviewRecord(project_id="1", mr_iid=1, status="posted"))
+        await db.save_review(ReviewRecord(project_id="1", mr_iid=2, status="error"))
+        r = await app.get("/api/v1/reviews/stats/weekly")
+        data = r.json()
+        assert data["total"] >= 2
+        assert data["posted"] >= 1
+        assert data["errors"] >= 1
+
+
+class TestCSVExport:
+    async def test_export_csv_returns_200(self, app):
+        r = await app.get("/api/v1/reviews/export.csv")
+        assert r.status_code == 200
+
+    async def test_export_csv_content_type(self, app):
+        r = await app.get("/api/v1/reviews/export.csv")
+        assert "text/csv" in r.headers["content-type"]
+
+    async def test_export_csv_has_header_row(self, app):
+        r = await app.get("/api/v1/reviews/export.csv")
+        text = r.text
+        assert "project_id" in text
+        assert "mr_iid" in text
+        assert "status" in text
+
+    async def test_export_csv_includes_saved_review(self, app, db):
+        from src.db import ReviewRecord
+        await db.save_review(
+            ReviewRecord(project_id="99", mr_iid=42, status="posted", author="tester")
+        )
+        r = await app.get("/api/v1/reviews/export.csv")
+        assert "99" in r.text
+        assert "42" in r.text

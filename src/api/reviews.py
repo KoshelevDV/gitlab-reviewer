@@ -67,6 +67,70 @@ async def recent_reviews(limit: int = 10) -> JSONResponse:
     return JSONResponse([_serialize(r) for r in records])
 
 
+@router.get("/stats/weekly")
+async def weekly_stats() -> JSONResponse:
+    """Aggregated review stats for the past 7 days (duplicate removed from bottom)."""
+    if _db is None:
+        raise HTTPException(status_code=503, detail="Database not available")
+
+    from datetime import UTC, datetime, timedelta
+
+    cutoff = (datetime.now(UTC) - timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    recs, _ = await _db.list_reviews(limit=10_000, offset=0)
+    weekly = [r for r in recs if r.created_at >= cutoff]
+
+    counts: dict[str, int] = {}
+    auto_approved = 0
+    for r in weekly:
+        counts[r.status] = counts.get(r.status, 0) + 1
+        if r.auto_approved:
+            auto_approved += 1
+
+    return JSONResponse(
+        {
+            "period_days": 7,
+            "since": cutoff,
+            "total": len(weekly),
+            "posted": counts.get("posted", 0),
+            "skipped": counts.get("skipped", 0),
+            "errors": counts.get("error", 0),
+            "auto_approved": auto_approved,
+        }
+    )
+
+
+@router.get("/export.csv")
+async def export_csv():  # type: ignore[no-untyped-def]
+    """Export full review history as CSV."""
+    import csv
+    import io
+
+    from fastapi.responses import Response
+
+    if _db is None:
+        raise HTTPException(status_code=503, detail="Database not available")
+
+    recs, _ = await _db.list_reviews(limit=100_000, offset=0)
+    fields = [
+        "id", "project_id", "mr_iid", "mr_title", "author",
+        "source_branch", "target_branch", "status", "skip_reason",
+        "auto_approved", "inline_count", "created_at",
+    ]
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=fields, extrasaction="ignore")
+    writer.writeheader()
+    for rec in recs:
+        row = asdict(rec)
+        row["auto_approved"] = int(row["auto_approved"])
+        writer.writerow({k: row.get(k, "") for k in fields})
+
+    return Response(
+        content=buf.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=reviews.csv"},
+    )
+
+
 @router.get("/{review_id}")
 async def get_review(review_id: int) -> JSONResponse:
     if _db is None:

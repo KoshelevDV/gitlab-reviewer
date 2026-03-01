@@ -152,3 +152,106 @@ class TestTriggerReview:
             "/api/v1/queue/review", json={"project_id": 1, "mr_iid": 10}
         )
         assert r.status_code == 503
+
+
+_DRY_RUN_MR_PAYLOAD = {
+    "title": "My MR",
+    "web_url": "http://gitlab/mr/7",
+    "author": {"username": "dev"},
+    "source_branch": "feat",
+    "target_branch": "main",
+    "draft": False,
+    "description": "",
+}
+
+
+class TestDryRun:
+    """Tests for dry_run=true on POST /api/v1/queue/review."""
+
+    @pytest.fixture(autouse=True)
+    def _setup_fake_gitlab(self):
+        """Point config at fake-gitlab so dry_run requests hit the respx mock."""
+        import src.config as cfg_mod
+        from src.config import AppConfig, GitLabConfig
+
+        cfg_mod._config = AppConfig(gitlab=GitLabConfig(url="http://fake-gitlab"))
+        yield
+
+    async def test_dry_run_returns_dry_run_status(self, client):
+        import httpx
+        import respx
+
+        qm = MagicMock()
+        qm.enqueue = AsyncMock(return_value=True)
+        set_queue_manager(qm)
+
+        with respx.mock:
+            respx.get("http://fake-gitlab/api/v4/projects/42/merge_requests/7").mock(
+                return_value=httpx.Response(200, json=_DRY_RUN_MR_PAYLOAD)
+            )
+            r = await client.post(
+                "/api/v1/queue/review",
+                json={"project_id": 42, "mr_iid": 7, "dry_run": True},
+            )
+
+        assert r.status_code == 200
+        assert r.json()["status"] == "dry_run"
+
+    async def test_dry_run_includes_mr_title(self, client):
+        import httpx
+        import respx
+
+        qm = MagicMock()
+        qm.enqueue = AsyncMock(return_value=True)
+        set_queue_manager(qm)
+
+        with respx.mock:
+            respx.get("http://fake-gitlab/api/v4/projects/42/merge_requests/7").mock(
+                return_value=httpx.Response(200, json=_DRY_RUN_MR_PAYLOAD)
+            )
+            r = await client.post(
+                "/api/v1/queue/review",
+                json={"project_id": 42, "mr_iid": 7, "dry_run": True},
+            )
+
+        assert r.status_code == 200
+        assert r.json()["mr_title"] == "My MR"
+
+    async def test_dry_run_does_not_enqueue(self, client):
+        import httpx
+        import respx
+
+        qm = MagicMock()
+        qm.enqueue = AsyncMock(return_value=True)
+        set_queue_manager(qm)
+
+        with respx.mock:
+            respx.get("http://fake-gitlab/api/v4/projects/42/merge_requests/7").mock(
+                return_value=httpx.Response(200, json=_DRY_RUN_MR_PAYLOAD)
+            )
+            r = await client.post(
+                "/api/v1/queue/review",
+                json={"project_id": 42, "mr_iid": 7, "dry_run": True},
+            )
+
+        assert r.status_code == 200
+        qm.enqueue.assert_not_awaited()
+
+    async def test_dry_run_mr_not_found_returns_404(self, client):
+        import httpx
+        import respx
+
+        qm = MagicMock()
+        qm.enqueue = AsyncMock(return_value=True)
+        set_queue_manager(qm)
+
+        with respx.mock:
+            respx.get("http://fake-gitlab/api/v4/projects/42/merge_requests/7").mock(
+                return_value=httpx.Response(404, json={"message": "404 Not Found"})
+            )
+            r = await client.post(
+                "/api/v1/queue/review",
+                json={"project_id": 42, "mr_iid": 7, "dry_run": True},
+            )
+
+        assert r.status_code == 404

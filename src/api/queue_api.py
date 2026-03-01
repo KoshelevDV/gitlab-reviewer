@@ -45,13 +45,44 @@ async def start_queue() -> JSONResponse:
 class TriggerBody(BaseModel):
     project_id: int | str
     mr_iid: int
+    dry_run: bool = False
 
 
 @router.post("/review")
 async def trigger_review(body: TriggerBody) -> JSONResponse:
-    """Manually enqueue a review for a specific MR."""
+    """Manually enqueue a review for a specific MR.
+
+    If dry_run=true: validates MR exists via GitLab API but does NOT enqueue.
+    Returns {"status": "dry_run", "mr_title": ..., "mr_url": ...}.
+    """
     if _queue_manager is None:
         raise HTTPException(status_code=503, detail="Queue not available")
+
+    if body.dry_run:
+        from ..config import get_config
+        from ..gitlab_client import GitLabClient
+
+        cfg = get_config()
+        token = cfg.gitlab_token
+        if not token:
+            raise HTTPException(status_code=503, detail="GitLab token not configured")
+        client = GitLabClient(cfg.gitlab.url, token, tls_verify=cfg.gitlab.tls_verify)
+        try:
+            mr = await client.get_mr(body.project_id, body.mr_iid)
+            return JSONResponse(
+                {
+                    "status": "dry_run",
+                    "project_id": str(body.project_id),
+                    "mr_iid": body.mr_iid,
+                    "mr_title": mr.title,
+                    "mr_url": mr.web_url,
+                    "is_draft": mr.is_draft,
+                }
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=404, detail=f"MR not found: {exc}") from exc
+        finally:
+            await client.aclose()
 
     from ..queue_manager import ReviewJob
 
