@@ -64,6 +64,7 @@ class ValkeyQueueManager:
         self._redis: Redis | None = None
         self._semaphore: asyncio.Semaphore | None = None
         self._workers: list[asyncio.Task] = []
+        self._review_fn: Callable[[ReviewJob], Coroutine] | None = None
 
         # Per-instance counters
         self._pending = 0
@@ -165,6 +166,7 @@ class ValkeyQueueManager:
         num_workers: int | None = None,
     ) -> None:
         """Spawn worker coroutines. Call from async context (app startup)."""
+        self._review_fn = review_fn
         count = num_workers or self._max_concurrent
         self._semaphore = asyncio.Semaphore(self._max_concurrent)
         for i in range(count):
@@ -172,6 +174,19 @@ class ValkeyQueueManager:
             task.set_name(f"valkey-reviewer-worker-{i}")
             self._workers.append(task)
         logger.info("Started %d Valkey review worker(s)", count)
+
+    async def restart(self, num_workers: int | None = None) -> int:
+        """Restart workers after drain. Returns number of workers started."""
+        if self._review_fn is None:
+            raise RuntimeError("start() must be called before restart()")
+        count = num_workers or self._max_concurrent
+        self._semaphore = asyncio.Semaphore(self._max_concurrent)
+        for i in range(count):
+            task = asyncio.ensure_future(self._worker(self._review_fn))
+            task.set_name(f"valkey-reviewer-worker-{i}")
+            self._workers.append(task)
+        logger.info("Restarted %d Valkey review workers", count)
+        return count
 
     async def drain(self) -> None:
         """Cancel all workers and close Redis connection."""

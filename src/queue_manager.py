@@ -45,6 +45,7 @@ class QueueManager:
         self._errors = 0
         self._job_counter = 0
         self._workers: list[asyncio.Task] = []
+        self._review_fn: Callable[[ReviewJob], Coroutine] | None = None
         # Simple in-memory dedup: (project_id, mr_iid, diff_hash) -> monotonic ts
         self._seen: dict[tuple, float] = {}
         self._dedup_ttl = 3600.0
@@ -105,12 +106,26 @@ class QueueManager:
         num_workers: int | None = None,
     ) -> None:
         """Start worker coroutines. Must be called from async context (e.g. app startup)."""
+        self._review_fn = review_fn
         count = num_workers or self._max_concurrent
         for i in range(count):
             task = asyncio.ensure_future(self._worker(review_fn))
             task.set_name(f"reviewer-worker-{i}")
             self._workers.append(task)
         logger.info("Started %d review worker(s)", count)
+
+    async def restart(self, num_workers: int | None = None) -> int:
+        """Restart workers after drain. Returns number of workers started."""
+        if self._review_fn is None:
+            raise RuntimeError("start() must be called before restart()")
+        count = num_workers or self._max_concurrent
+        self._semaphore = asyncio.Semaphore(self._max_concurrent)
+        for i in range(count):
+            task = asyncio.ensure_future(self._worker(self._review_fn))
+            task.set_name(f"reviewer-worker-{i}")
+            self._workers.append(task)
+        logger.info("Restarted %d review workers", count)
+        return count
 
     async def drain(self) -> None:
         """Cancel all workers and wait for in-flight jobs to finish."""

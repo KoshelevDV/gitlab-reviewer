@@ -33,6 +33,15 @@ async def drain_queue() -> JSONResponse:
     return JSONResponse({"status": "drained"})
 
 
+@router.post("/start")
+async def start_queue() -> JSONResponse:
+    """Restart review workers (after /drain or on initial setup)."""
+    if _queue_manager is None:
+        raise HTTPException(status_code=503, detail="Queue not available")
+    count = await _queue_manager.restart()
+    return JSONResponse({"status": "started", "workers": count})
+
+
 class TriggerBody(BaseModel):
     project_id: int | str
     mr_iid: int

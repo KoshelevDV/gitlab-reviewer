@@ -193,6 +193,35 @@ class TestWorkers:
         await asyncio.sleep(0.15)
         assert 42 in processed
 
+    async def test_restart_after_drain(self, vqm, fake_redis):
+        """Workers restarted via restart() should process new jobs normally."""
+        processed = []
+
+        async def handler(job: ReviewJob):
+            processed.append(job.mr_iid)
+
+        vqm.start(review_fn=handler)
+        await vqm.enqueue(ReviewJob(project_id=1, mr_iid=1))
+        await asyncio.sleep(0.15)
+        await vqm.drain()
+        # drain() closes the Redis connection — re-inject the fake for the restarted workers
+        vqm._redis = fakeredis.FakeAsyncRedis(server=fake_redis, decode_responses=True)
+
+        # Restart and process a new job
+        count = await vqm.restart()
+        assert count == 2  # max_concurrent from fixture
+        await vqm.enqueue(ReviewJob(project_id=1, mr_iid=2))
+        await asyncio.sleep(0.15)
+        await vqm.drain()
+
+        assert 2 in processed
+
+    async def test_restart_without_start_raises(self, vqm):
+        import pytest
+
+        with pytest.raises(RuntimeError, match="start\\(\\) must be called before restart"):
+            await vqm.restart()
+
     async def test_done_counter_increments(self, vqm):
         vqm.start(review_fn=AsyncMock())
         await vqm.enqueue(ReviewJob(project_id=1, mr_iid=1))

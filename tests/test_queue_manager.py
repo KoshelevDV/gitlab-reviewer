@@ -95,6 +95,33 @@ class TestWorkers:
         await q.drain()
         assert 42 in processed
 
+    async def test_restart_after_drain(self):
+        """Workers restarted via restart() should process new jobs normally."""
+        q = QueueManager(max_concurrent=1, max_size=10)
+        processed = []
+
+        async def handler(job: ReviewJob):
+            processed.append(job.mr_iid)
+
+        q.start(review_fn=handler)
+        await q.enqueue(ReviewJob(project_id=1, mr_iid=1))
+        await asyncio.sleep(0.1)
+        await q.drain()
+
+        # Queue is now dead — restart it
+        count = await q.restart()
+        assert count == 1
+        await q.enqueue(ReviewJob(project_id=1, mr_iid=2))
+        await asyncio.sleep(0.1)
+        await q.drain()
+
+        assert 2 in processed
+
+    async def test_restart_without_start_raises(self):
+        q = QueueManager(max_concurrent=1, max_size=10)
+        with pytest.raises(RuntimeError, match="start\\(\\) must be called before restart"):
+            await q.restart()
+
     async def test_done_counter_increments(self):
         q = QueueManager(max_concurrent=1, max_size=10)
         q.start(review_fn=AsyncMock())

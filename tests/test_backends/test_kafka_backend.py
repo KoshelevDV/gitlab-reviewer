@@ -211,6 +211,43 @@ class TestSupersede:
 
 
 class TestWorkers:
+    async def test_restart_after_drain(self):
+        """Workers restarted via restart() should be able to process new jobs."""
+        kqm = _make_kqm(max_concurrent=1)
+        processed = []
+
+        async def handler(job: ReviewJob):
+            processed.append(job.mr_iid)
+
+        job_payload = {
+            "project_id": "1",
+            "mr_iid": 99,
+            "event_action": "open",
+            "diff_hash": "",
+            "id": 1,
+        }
+        fake1 = FakeConsumer([])
+        fake2 = FakeConsumer([_make_kafka_msg(job_payload)])
+
+        with patch("aiokafka.AIOKafkaConsumer", side_effect=[fake1, fake2]):
+            kqm.start(review_fn=handler, num_workers=1)
+            await asyncio.sleep(0.05)
+            await kqm.drain()
+
+            count = await kqm.restart(num_workers=1)
+            assert count == 1
+            await asyncio.sleep(0.15)
+            await kqm.drain()
+
+        assert 99 in processed
+
+    async def test_restart_without_start_raises(self):
+        import pytest
+
+        kqm = _make_kqm()
+        with pytest.raises(RuntimeError, match="start\\(\\) must be called before restart"):
+            await kqm.restart()
+
     async def test_worker_processes_message(self):
         """Worker deserialises a Kafka message and calls review_fn."""
         kqm = _make_kqm()
