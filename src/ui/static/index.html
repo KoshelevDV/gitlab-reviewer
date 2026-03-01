@@ -455,18 +455,32 @@
   <div x-show="activeTab === 'dashboard'">
     <div class="section-title">Dashboard</div>
 
-    <!-- Queue stats -->
+    <!-- Queue live state + DB totals -->
     <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:20px;">
-      <template x-for="[lbl, key, color] in [
-          ['Pending', 'pending', 'var(--yellow)'],
-          ['Active',  'active',  'var(--accent-2)'],
-          ['Done',    'done',    'var(--green)'],
-          ['Errors',  'errors',  'var(--red)']]" :key="key">
-        <div class="card" style="text-align:center; padding:20px 12px;">
-          <div class="stat-num" :style="'color:' + color" x-text="queue[key]"></div>
-          <div class="stat-lbl" x-text="lbl"></div>
-        </div>
-      </template>
+      <!-- Pending: live queue depth (in-memory, resets on restart) -->
+      <div class="card" style="text-align:center; padding:20px 12px;">
+        <div class="stat-num" style="color:var(--yellow);" x-text="queue.pending"></div>
+        <div class="stat-lbl">Pending</div>
+        <div style="font-size:.68rem; color:var(--text-3); margin-top:3px;">in queue now</div>
+      </div>
+      <!-- Active: jobs currently running (in-memory) -->
+      <div class="card" style="text-align:center; padding:20px 12px;">
+        <div class="stat-num" style="color:var(--accent-2);" x-text="queue.active"></div>
+        <div class="stat-lbl">Active</div>
+        <div style="font-size:.68rem; color:var(--text-3); margin-top:3px;">reviewing now</div>
+      </div>
+      <!-- Done: from DB (persistent, survives restart) -->
+      <div class="card" style="text-align:center; padding:20px 12px;">
+        <div class="stat-num" style="color:var(--green);" x-text="reviewStats.posted ?? 0"></div>
+        <div class="stat-lbl">Posted</div>
+        <div style="font-size:.68rem; color:var(--text-3); margin-top:3px;">total reviews</div>
+      </div>
+      <!-- Errors: from DB (persistent) -->
+      <div class="card" style="text-align:center; padding:20px 12px;">
+        <div class="stat-num" style="color:var(--red);" x-text="reviewStats.errors ?? 0"></div>
+        <div class="stat-lbl">Errors</div>
+        <div style="font-size:.68rem; color:var(--text-3); margin-top:3px;">total failed</div>
+      </div>
     </div>
 
     <!-- Provider + Model row -->
