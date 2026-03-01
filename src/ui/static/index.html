@@ -7,237 +7,644 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
   <style>
+    /* ── Design tokens ─────────────────────────────────────────── */
+    :root {
+      --bg:          #0d1117;
+      --surface:     #161b22;
+      --surface-2:   #21262d;
+      --surface-3:   #2d333b;
+      --border:      #30363d;
+      --border-2:    #444c56;
+
+      --accent:      #8b5cf6;
+      --accent-2:    #a78bfa;
+      --accent-dim:  rgba(139,92,246,.15);
+      --accent-dark: #6d28d9;
+
+      --text-1:      #e6edf3;
+      --text-2:      #b1bac4;
+      --text-3:      #768390;
+
+      --green:       #3fb950;
+      --green-bg:    rgba(63,185,80,.12);
+      --yellow:      #e3b341;
+      --yellow-bg:   rgba(227,179,65,.12);
+      --red:         #f85149;
+      --red-bg:      rgba(248,81,73,.12);
+      --blue:        #58a6ff;
+      --blue-bg:     rgba(88,166,255,.12);
+      --orange:      #f0883e;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      background: var(--bg);
+      color: var(--text-1);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      min-height: 100vh;
+    }
+
     [x-cloak] { display: none !important; }
-    .log-line { font-family: monospace; font-size: 0.78rem; line-height: 1.5; }
-    .log-ERROR { color: #f87171; }
-    .log-WARNING { color: #fbbf24; }
-    .log-INFO { color: #a3e635; }
-    .log-DEBUG { color: #60a5fa; }
-    #log-box { background: #0d1117; height: 480px; overflow-y: auto; }
-    .tab-btn { @apply px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 transition-colors; }
-    .tab-active { @apply border-indigo-500 text-indigo-400; }
-    .tab-inactive { @apply border-transparent text-gray-400 hover:text-gray-200; }
-    .card { @apply bg-gray-800 rounded-xl p-5 border border-gray-700; }
-    .btn { @apply px-4 py-2 rounded-lg text-sm font-medium transition-colors; }
-    .btn-primary { @apply bg-indigo-600 hover:bg-indigo-500 text-white; }
-    .btn-danger  { @apply bg-red-700 hover:bg-red-600 text-white; }
-    .btn-ghost   { @apply bg-gray-700 hover:bg-gray-600 text-gray-200; }
-    .input       { @apply bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-100 w-full focus:outline-none focus:ring-2 focus:ring-indigo-500; }
-    .label       { @apply block text-xs font-medium text-gray-400 mb-1; }
-    .badge-ok    { @apply inline-block px-2 py-0.5 text-xs rounded-full bg-green-800 text-green-300; }
-    .badge-err   { @apply inline-block px-2 py-0.5 text-xs rounded-full bg-red-800 text-red-300; }
-    .badge-off   { @apply inline-block px-2 py-0.5 text-xs rounded-full bg-gray-700 text-gray-400; }
+
+    /* ── Scrollbar ─────────────────────────────────────────────── */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--text-3); }
+
+    /* ── Navigation ────────────────────────────────────────────── */
+    .topbar {
+      position: sticky; top: 0; z-index: 40;
+      background: rgba(13,17,23,.92);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      padding: 0 24px;
+      height: 52px;
+      display: flex; align-items: center; gap: 12px;
+    }
+    .topbar-logo {
+      font-weight: 700; font-size: .95rem;
+      color: var(--accent-2);
+      display: flex; align-items: center; gap: 8px;
+    }
+    .topbar-logo svg { opacity: .85; }
+    .topbar-sub { color: var(--text-3); font-size: .75rem; }
+    .topbar-stat {
+      display: flex; align-items: center; gap: 6px;
+      font-size: .75rem; color: var(--text-3);
+      padding: 4px 10px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+    }
+    .topbar-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--green); box-shadow: 0 0 6px var(--green);
+      flex-shrink: 0;
+    }
+    .topbar-dot.busy { background: var(--yellow); box-shadow: 0 0 6px var(--yellow); }
+
+    /* ── Tab bar ───────────────────────────────────────────────── */
+    .tabbar {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 24px;
+      display: flex; gap: 2px; align-items: flex-end;
+      overflow-x: auto;
+    }
+    .tabbar::-webkit-scrollbar { height: 0; }
+    .tab {
+      padding: 10px 14px;
+      font-size: .8rem; font-weight: 500;
+      color: var(--text-3);
+      border-bottom: 2px solid transparent;
+      cursor: pointer; white-space: nowrap;
+      transition: color .15s, border-color .15s;
+      user-select: none;
+      border-radius: 6px 6px 0 0;
+    }
+    .tab:hover { color: var(--text-2); background: rgba(255,255,255,.04); }
+    .tab.active {
+      color: var(--accent-2);
+      border-bottom-color: var(--accent);
+      background: var(--accent-dim);
+    }
+
+    /* ── Cards ─────────────────────────────────────────────────── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+    }
+    .card-hover {
+      transition: border-color .15s, background .15s;
+    }
+    .card-hover:hover {
+      border-color: var(--border-2);
+      background: var(--surface-2);
+    }
+    .card-label {
+      font-size: .7rem; font-weight: 600;
+      text-transform: uppercase; letter-spacing: .06em;
+      color: var(--text-3);
+      margin-bottom: 10px;
+    }
+    .section-title {
+      font-size: 1rem; font-weight: 600; color: var(--text-1);
+      margin-bottom: 16px;
+    }
+
+    /* ── Stat cards ────────────────────────────────────────────── */
+    .stat-num {
+      font-size: 1.9rem; font-weight: 700; line-height: 1;
+    }
+    .stat-lbl {
+      font-size: .72rem; color: var(--text-3); margin-top: 5px;
+    }
+
+    /* ── Buttons ───────────────────────────────────────────────── */
+    .btn {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 6px 14px; border-radius: 6px;
+      font-size: .82rem; font-weight: 500;
+      cursor: pointer; transition: all .15s;
+      border: 1px solid transparent;
+      white-space: nowrap;
+    }
+    .btn:disabled { opacity: .45; cursor: default; }
+    .btn-primary {
+      background: var(--accent); color: #fff;
+      border-color: rgba(255,255,255,.1);
+    }
+    .btn-primary:hover:not(:disabled) { background: var(--accent-dark); }
+    .btn-ghost {
+      background: var(--surface-2); color: var(--text-2);
+      border-color: var(--border);
+    }
+    .btn-ghost:hover:not(:disabled) { background: var(--surface-3); color: var(--text-1); }
+    .btn-danger {
+      background: var(--red-bg); color: var(--red);
+      border-color: rgba(248,81,73,.25);
+    }
+    .btn-danger:hover:not(:disabled) { background: rgba(248,81,73,.25); }
+    .btn-sm { padding: 4px 10px; font-size: .75rem; }
+
+    /* ── Inputs ────────────────────────────────────────────────── */
+    .inp {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 7px 12px;
+      font-size: .83rem;
+      color: var(--text-1);
+      outline: none;
+      transition: border-color .15s, box-shadow .15s;
+    }
+    .inp::placeholder { color: var(--text-3); }
+    .inp:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-dim);
+    }
+    .inp-label {
+      display: block; font-size: .75rem; font-weight: 500;
+      color: var(--text-2); margin-bottom: 5px;
+    }
+    select.inp option { background: var(--surface-2); }
+
+    /* ── Badges ────────────────────────────────────────────────── */
+    .badge {
+      display: inline-flex; align-items: center;
+      padding: 2px 8px; border-radius: 20px;
+      font-size: .7rem; font-weight: 600; white-space: nowrap;
+    }
+    .badge-green  { background: var(--green-bg);  color: var(--green);  border: 1px solid rgba(63,185,80,.25); }
+    .badge-yellow { background: var(--yellow-bg); color: var(--yellow); border: 1px solid rgba(227,179,65,.25); }
+    .badge-red    { background: var(--red-bg);    color: var(--red);    border: 1px solid rgba(248,81,73,.25); }
+    .badge-blue   { background: var(--blue-bg);   color: var(--blue);   border: 1px solid rgba(88,166,255,.25); }
+    .badge-violet { background: var(--accent-dim); color: var(--accent-2); border: 1px solid rgba(139,92,246,.25); }
+    .badge-gray   { background: var(--surface-2); color: var(--text-3);  border: 1px solid var(--border); }
+
+    /* ── Risk bar ──────────────────────────────────────────────── */
+    .risk-bar {
+      width: 60px; height: 5px; border-radius: 3px;
+      background: var(--surface-3); overflow: hidden; flex-shrink: 0;
+    }
+    .risk-bar-fill { height: 100%; border-radius: 3px; transition: width .3s; }
+
+    /* ── Tables ────────────────────────────────────────────────── */
+    .tbl { width: 100%; border-collapse: collapse; font-size: .83rem; }
+    .tbl thead tr { border-bottom: 1px solid var(--border); }
+    .tbl thead th {
+      padding: 10px 16px; text-align: left;
+      font-size: .72rem; font-weight: 600;
+      text-transform: uppercase; letter-spacing: .04em;
+      color: var(--text-3);
+    }
+    .tbl tbody tr {
+      border-bottom: 1px solid rgba(48,54,61,.6);
+      transition: background .1s;
+    }
+    .tbl tbody tr:last-child { border-bottom: none; }
+    .tbl tbody tr:hover { background: rgba(255,255,255,.03); }
+    .tbl tbody td { padding: 10px 16px; color: var(--text-2); }
+
+    /* ── Log box ───────────────────────────────────────────────── */
+    #log-box {
+      background: #070c10;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      height: 520px;
+      overflow-y: auto;
+      padding: 12px;
+      font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', ui-monospace, monospace;
+    }
+    .log-line {
+      font-size: .75rem; line-height: 1.6;
+      display: flex; gap: 8px; padding: 1px 0;
+    }
+    .log-ts   { color: #3d4f61; flex-shrink: 0; }
+    .log-lvl  { width: 18px; text-align: center; font-weight: 700; flex-shrink: 0; }
+    .log-src  { color: #4a5568; flex-shrink: 0; max-width: 160px; overflow: hidden; text-overflow: ellipsis; }
+    .log-msg  { color: var(--text-2); word-break: break-word; }
+    .lvl-E .log-lvl { color: var(--red); }
+    .lvl-E .log-msg { color: #fca5a5; }
+    .lvl-W .log-lvl { color: var(--yellow); }
+    .lvl-W .log-msg { color: #fde68a; }
+    .lvl-I .log-lvl { color: var(--green); }
+    .lvl-I .log-msg { color: var(--text-2); }
+    .lvl-D .log-lvl { color: var(--blue); }
+    .lvl-D .log-msg { color: #93c5fd; }
+
+    /* ── Toggle switch ──────────────────────────────────────────── */
+    .toggle { display: inline-flex; align-items: center; gap: 10px; cursor: pointer; }
+    .toggle input { display: none; }
+    .toggle-track {
+      width: 36px; height: 20px; border-radius: 10px;
+      background: var(--surface-3); border: 1px solid var(--border-2);
+      position: relative; transition: background .2s, border-color .2s;
+    }
+    .toggle input:checked + .toggle-track {
+      background: var(--accent); border-color: var(--accent);
+    }
+    .toggle-thumb {
+      position: absolute; top: 2px; left: 2px;
+      width: 14px; height: 14px; border-radius: 50%;
+      background: var(--text-2); transition: left .2s, background .2s;
+    }
+    .toggle input:checked + .toggle-track .toggle-thumb {
+      left: 18px; background: #fff;
+    }
+    .toggle-label { font-size: .84rem; color: var(--text-1); }
+
+    /* ── Status dot ─────────────────────────────────────────────── */
+    .status-dot {
+      width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+    }
+    .dot-green  { background: var(--green); box-shadow: 0 0 5px var(--green); }
+    .dot-yellow { background: var(--yellow); box-shadow: 0 0 5px var(--yellow); }
+    .dot-red    { background: var(--red); box-shadow: 0 0 5px var(--red); }
+    .dot-gray   { background: var(--text-3); }
+
+    /* ── Modal ──────────────────────────────────────────────────── */
+    .modal-overlay {
+      position: fixed; inset: 0; z-index: 50;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(0,0,0,.7);
+      backdrop-filter: blur(4px);
+    }
+    .modal-box {
+      background: var(--surface);
+      border: 1px solid var(--border-2);
+      border-radius: 14px;
+      width: 100%; max-width: 760px;
+      max-height: 88vh;
+      display: flex; flex-direction: column;
+      margin: 16px;
+      box-shadow: 0 24px 64px rgba(0,0,0,.6);
+    }
+    .modal-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+      flex-shrink: 0;
+    }
+    .modal-body { overflow-y: auto; padding: 20px; flex: 1; }
+    .modal-close {
+      width: 28px; height: 28px; border-radius: 6px;
+      background: var(--surface-2); border: 1px solid var(--border);
+      color: var(--text-2); font-size: 1rem; line-height: 1;
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+      transition: background .15s, color .15s;
+    }
+    .modal-close:hover { background: var(--surface-3); color: var(--text-1); }
+
+    /* ── Review body ────────────────────────────────────────────── */
+    .review-body {
+      font-size: .85rem; line-height: 1.7; color: var(--text-2);
+      white-space: pre-wrap; font-family: inherit;
+    }
+    .review-body h2 {
+      font-size: .95rem; font-weight: 700;
+      color: var(--text-1); margin: 16px 0 8px;
+    }
+
+    /* ── Prompt chip ────────────────────────────────────────────── */
+    .prompt-chip {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: var(--surface-2); border: 1px solid var(--border);
+      border-radius: 20px; padding: 4px 12px;
+      font-size: .78rem; color: var(--text-2);
+      transition: border-color .15s;
+    }
+    .prompt-chip:hover { border-color: var(--border-2); }
+    .prompt-chip .chip-idx {
+      font-size: .65rem; color: var(--text-3);
+      background: var(--surface-3); border-radius: 50%;
+      width: 16px; height: 16px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .prompt-chip .chip-rm {
+      color: var(--text-3); cursor: pointer; margin-left: 2px;
+      font-size: .9rem; line-height: 1;
+      transition: color .1s;
+    }
+    .prompt-chip .chip-rm:hover { color: var(--red); }
+
+    /* ── Section divider ────────────────────────────────────────── */
+    .divider {
+      border: none; border-top: 1px solid var(--border);
+      margin: 20px 0;
+    }
+
+    /* ── Inline notice ──────────────────────────────────────────── */
+    .notice {
+      display: flex; align-items: flex-start; gap: 10px;
+      padding: 12px 14px; border-radius: 8px;
+      font-size: .82rem;
+    }
+    .notice-icon { flex-shrink: 0; font-size: 1rem; }
+    .notice-info {
+      background: var(--blue-bg); border: 1px solid rgba(88,166,255,.2);
+      color: var(--blue);
+    }
+    .notice-warn {
+      background: var(--yellow-bg); border: 1px solid rgba(227,179,65,.2);
+      color: var(--yellow);
+    }
+
+    /* ── Misc ───────────────────────────────────────────────────── */
+    .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+    .text-accent { color: var(--accent-2); }
+    .text-muted  { color: var(--text-3); }
+    .text-sub    { color: var(--text-2); }
+    code {
+      background: var(--surface-2); border: 1px solid var(--border);
+      padding: 1px 5px; border-radius: 4px;
+      font-size: .8em; font-family: ui-monospace, monospace;
+      color: var(--accent-2);
+    }
+    a { color: var(--accent-2); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* ── Transitions ────────────────────────────────────────────── */
+    [x-transition] {
+      transition: opacity .2s, transform .2s;
+    }
   </style>
 </head>
-<body class="bg-gray-900 text-gray-100 min-h-screen" x-cloak>
+<body x-cloak>
 
-<!-- NAV -->
-<nav class="bg-gray-800 border-b border-gray-700 px-6 py-3 flex items-center gap-3">
-  <span class="text-indigo-400 font-bold text-lg">🤖 gitlab-reviewer</span>
-  <span class="text-gray-500 text-xs ml-2">local LLM code review</span>
-  <div class="ml-auto flex items-center gap-2">
-    <span class="text-xs text-gray-500">queue:</span>
-    <span class="font-mono text-xs" :class="queue.active > 0 ? 'text-yellow-400' : 'text-green-400'">
-      <span x-text="queue.pending"></span> pending /
-      <span x-text="queue.active"></span> active
-    </span>
+<!-- ═══════════════════════════════════════════════════════════════
+     TOP BAR
+═══════════════════════════════════════════════════════════════════ -->
+<header class="topbar">
+  <div class="topbar-logo">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+    </svg>
+    gitlab-reviewer
   </div>
-</nav>
+  <span class="topbar-sub">automated code review</span>
 
-<!-- TABS -->
-<div class="border-b border-gray-700 bg-gray-850 px-6 flex gap-1 pt-2 bg-gray-800">
+  <div style="margin-left:auto; display:flex; gap:8px; align-items:center;">
+    <!-- Queue status pill -->
+    <div class="topbar-stat">
+      <span class="topbar-dot" :class="queue.active > 0 ? 'busy' : ''"></span>
+      <span x-text="queue.active > 0
+        ? queue.active + ' reviewing…'
+        : queue.pending > 0
+          ? queue.pending + ' pending'
+          : 'idle'"></span>
+    </div>
+    <!-- WebSocket status -->
+    <div class="topbar-stat">
+      <span class="status-dot" :class="wsConnected ? 'dot-green' : 'dot-gray'"></span>
+      <span x-text="wsConnected ? 'live' : 'offline'"></span>
+    </div>
+    <!-- Active provider badge -->
+    <div class="topbar-stat" x-show="activeProvider" x-cloak>
+      <span class="status-dot dot-green"></span>
+      <span x-text="activeProvider?.name" style="max-width:140px; overflow:hidden; text-overflow:ellipsis;"></span>
+    </div>
+  </div>
+</header>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     TAB BAR
+═══════════════════════════════════════════════════════════════════ -->
+<nav class="tabbar">
   <template x-for="tab in tabs" :key="tab.id">
-    <button @click="activeTab = tab.id"
-      :class="activeTab === tab.id ? 'tab-btn tab-active' : 'tab-btn tab-inactive'"
+    <button
+      class="tab"
+      :class="activeTab === tab.id ? 'active' : ''"
+      @click="activeTab = tab.id"
       x-text="tab.label">
     </button>
   </template>
-</div>
+</nav>
 
-<!-- CONTENT -->
-<main class="px-6 py-6 max-w-6xl mx-auto">
+<!-- ═══════════════════════════════════════════════════════════════
+     MAIN CONTENT
+═══════════════════════════════════════════════════════════════════ -->
+<main style="padding: 24px; max-width: 1100px; margin: 0 auto;">
 
-  <!-- ── DASHBOARD ──────────────────────────────────────────────── -->
+  <!-- ───────────────── DASHBOARD ───────────────── -->
   <div x-show="activeTab === 'dashboard'">
-    <h2 class="text-lg font-semibold mb-4">Dashboard</h2>
+    <div class="section-title">Dashboard</div>
 
     <!-- Queue stats -->
-    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
-      <template x-for="[label, key, color] in [
-          ['Pending', 'pending', 'text-yellow-400'],
-          ['Active',  'active',  'text-indigo-400'],
-          ['Done',    'done',    'text-green-400'],
-          ['Errors',  'errors',  'text-red-400']]" :key="key">
-        <div class="card text-center">
-          <div class="text-3xl font-bold" :class="color" x-text="queue[key]"></div>
-          <div class="text-xs text-gray-400 mt-1" x-text="label"></div>
+    <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:20px;">
+      <template x-for="[lbl, key, color] in [
+          ['Pending', 'pending', 'var(--yellow)'],
+          ['Active',  'active',  'var(--accent-2)'],
+          ['Done',    'done',    'var(--green)'],
+          ['Errors',  'errors',  'var(--red)']]" :key="key">
+        <div class="card" style="text-align:center; padding:20px 12px;">
+          <div class="stat-num" :style="'color:' + color" x-text="queue[key]"></div>
+          <div class="stat-lbl" x-text="lbl"></div>
         </div>
       </template>
     </div>
 
-    <!-- Active provider -->
-    <div class="card mb-4">
-      <div class="text-xs text-gray-400 mb-2 uppercase tracking-wide">Active Provider</div>
-      <template x-if="activeProvider">
-        <div class="flex items-center gap-3">
-          <span class="badge-ok">online</span>
-          <span class="font-medium" x-text="activeProvider.name"></span>
-          <span class="text-gray-400 text-xs" x-text="activeProvider.url"></span>
-          <span class="ml-auto text-xs text-gray-500" x-text="activeProvider.type"></span>
-        </div>
-      </template>
-      <template x-if="!activeProvider">
-        <span class="text-yellow-400 text-sm">⚠ No active provider configured</span>
-      </template>
+    <!-- Provider + Model row -->
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:16px;">
+      <div class="card">
+        <div class="card-label">Active Provider</div>
+        <template x-if="activeProvider">
+          <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+            <span class="status-dot dot-green"></span>
+            <span style="font-weight:600; color:var(--text-1);" x-text="activeProvider.name"></span>
+            <span class="badge badge-gray mono" x-text="activeProvider.type"></span>
+            <span class="text-muted mono" style="font-size:.75rem; margin-left:auto;" x-text="activeProvider.url"></span>
+          </div>
+        </template>
+        <template x-if="!activeProvider">
+          <span class="badge badge-yellow">⚠ No active provider</span>
+        </template>
+      </div>
+      <div class="card">
+        <div class="card-label">Active Model</div>
+        <template x-if="config.model?.name">
+          <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:center;">
+            <span class="mono text-accent" style="font-size:.88rem;" x-text="config.model.name"></span>
+            <span class="text-muted" style="font-size:.78rem;">T=<span style="color:var(--text-2);" x-text="config.model.temperature"></span></span>
+            <span class="text-muted" style="font-size:.78rem;">ctx=<span style="color:var(--text-2);" x-text="config.model.context_size ?? 'default'"></span></span>
+          </div>
+        </template>
+        <template x-if="!config.model?.name">
+          <span class="badge badge-yellow">⚠ No model selected</span>
+        </template>
+      </div>
     </div>
 
-    <!-- Active model -->
-    <div class="card mb-4">
-      <div class="text-xs text-gray-400 mb-2 uppercase tracking-wide">Active Model</div>
-      <template x-if="config.model && config.model.name">
-        <div class="flex flex-wrap gap-4 text-sm">
-          <span class="font-mono text-indigo-300" x-text="config.model.name"></span>
-          <span class="text-gray-400">temp: <span class="text-gray-200" x-text="config.model.temperature"></span></span>
-          <span class="text-gray-400">ctx: <span class="text-gray-200" x-text="config.model.context_size ?? 'model default'"></span></span>
-          <span class="text-gray-400">max_tokens: <span class="text-gray-200" x-text="config.model.max_tokens"></span></span>
-        </div>
-      </template>
-      <template x-if="!config.model || !config.model.name">
-        <span class="text-yellow-400 text-sm">⚠ No model selected</span>
-      </template>
-    </div>
-
-    <!-- Review stats row -->
-    <div class="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-4">
-      <template x-for="[label, key, color] in [
-          ['Total',         'total',         'text-gray-200'],
-          ['Posted',        'posted',        'text-green-400'],
-          ['Skipped',       'skipped',       'text-yellow-400'],
-          ['Errors',        'errors',        'text-red-400'],
-          ['Auto-approved', 'auto_approved', 'text-indigo-400']]" :key="key">
-        <div class="card text-center py-3 cursor-pointer hover:border-indigo-500 transition-colors"
-          @click="activeTab = 'reviews'; reviewFilter.status = key === 'total' ? '' : key; loadReviews()">
-          <div class="text-2xl font-bold" :class="color" x-text="reviewStats[key] ?? 0"></div>
-          <div class="text-xs text-gray-400 mt-0.5" x-text="label"></div>
+    <!-- Review stats -->
+    <div style="display:grid; grid-template-columns:repeat(5,1fr); gap:10px; margin-bottom:16px;">
+      <template x-for="[lbl, key, color] in [
+          ['Total',         'total',         'var(--text-1)'],
+          ['Posted',        'posted',        'var(--green)'],
+          ['Skipped',       'skipped',       'var(--yellow)'],
+          ['Errors',        'errors',        'var(--red)'],
+          ['Auto-approved', 'auto_approved', 'var(--accent-2)']]" :key="key">
+        <div class="card card-hover"
+          style="text-align:center; padding:14px 8px; cursor:pointer;"
+          @click="activeTab='reviews'; reviewFilter.status=key==='total'?'':key; loadReviews()">
+          <div class="stat-num" style="font-size:1.5rem;" :style="'color:'+color" x-text="reviewStats[key] ?? 0"></div>
+          <div class="stat-lbl" x-text="lbl"></div>
         </div>
       </template>
     </div>
 
     <!-- Recent reviews -->
-    <div class="card">
-      <div class="flex items-center justify-between mb-3">
-        <span class="text-xs text-gray-400 uppercase tracking-wide">Recent Reviews</span>
-        <button class="text-indigo-400 hover:text-indigo-300 text-xs"
-          @click="activeTab = 'reviews'">View all →</button>
+    <div class="card" x-init="$watch('activeTab', v => v==='dashboard' && loadDashboardRecent())">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+        <span class="card-label" style="margin-bottom:0;">Recent Reviews</span>
+        <button class="btn btn-ghost btn-sm" @click="activeTab='reviews'">View all →</button>
       </div>
-      <div class="space-y-1.5" x-init="$watch('activeTab', v => v === 'dashboard' && loadDashboardRecent())">
+      <div>
         <template x-for="r in dashboardRecent" :key="r.id">
-          <div class="flex items-center gap-2 text-xs py-1 border-b border-gray-700/40 last:border-0">
-            <span class="px-2 py-0.5 rounded-full text-xs"
+          <div style="display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid rgba(48,54,61,.5);"
+            class="last:border-0">
+            <span class="badge"
               :class="{
-                'bg-green-900 text-green-300':  r.status === 'posted',
-                'bg-yellow-900 text-yellow-300': r.status === 'skipped',
-                'bg-red-900 text-red-300':      r.status === 'error',
+                'badge-green':  r.status==='posted',
+                'badge-yellow': r.status==='skipped',
+                'badge-red':    r.status==='error',
+                'badge-gray':   r.status==='dry_run',
               }"
               x-text="r.status"></span>
-            <span class="font-mono text-gray-400" x-text="r.project_id"></span>
-            <span class="text-indigo-400 cursor-pointer hover:underline flex-1 truncate"
-              @click="openReview(r); selectedReview = r"
-              x-text="'MR!' + r.mr_iid + ' ' + (r.mr_title?.substring(0,50) || '')"></span>
-            <span class="text-gray-500 whitespace-nowrap"
+            <span class="mono text-muted" style="font-size:.75rem; flex-shrink:0;" x-text="r.project_id"></span>
+            <span class="text-accent" style="cursor:pointer; font-size:.83rem; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"
+              @click="openReview(r); selectedReview=r"
+              x-text="'MR!'+r.mr_iid+' '+(r.mr_title?.substring(0,55)||'')"></span>
+            <!-- Risk score mini bar -->
+            <template x-if="r.risk_score > 0">
+              <div style="display:flex; align-items:center; gap:5px; flex-shrink:0;">
+                <div class="risk-bar">
+                  <div class="risk-bar-fill"
+                    :style="'width:'+r.risk_score+'%; background:' + (r.risk_score>=70?'var(--red)':r.risk_score>=40?'var(--yellow)':'var(--green)')"></div>
+                </div>
+                <span style="font-size:.7rem; width:22px; text-align:right;"
+                  :style="'color:'+(r.risk_score>=70?'var(--red)':r.risk_score>=40?'var(--yellow)':'var(--green)')"
+                  x-text="r.risk_score"></span>
+              </div>
+            </template>
+            <span class="text-muted" style="font-size:.73rem; white-space:nowrap; flex-shrink:0;"
               x-text="r.created_at?.substring(0,16).replace('T',' ')"></span>
           </div>
         </template>
-        <div x-show="!dashboardRecent?.length" class="text-gray-500 text-xs py-2">No reviews yet</div>
+        <div x-show="!dashboardRecent?.length" style="color:var(--text-3); font-size:.84rem; padding:16px 0; text-align:center;">
+          No reviews yet — waiting for the first webhook…
+        </div>
       </div>
     </div>
   </div>
 
-  <!-- ── PROVIDERS ──────────────────────────────────────────────── -->
+  <!-- ───────────────── PROVIDERS ───────────────── -->
   <div x-show="activeTab === 'providers'">
-    <div class="flex items-center justify-between mb-4">
-      <h2 class="text-lg font-semibold">LLM Providers</h2>
-      <button class="btn btn-primary" @click="showAddProvider = !showAddProvider">
-        + Add Provider
-      </button>
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px;">
+      <div class="section-title" style="margin-bottom:0;">LLM Providers</div>
+      <button class="btn btn-primary btn-sm" @click="showAddProvider = !showAddProvider">+ Add Provider</button>
     </div>
 
     <!-- Add provider form -->
-    <div class="card mb-4" x-show="showAddProvider">
-      <h3 class="text-sm font-semibold mb-3 text-indigo-300">New Provider</h3>
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+    <div class="card" style="margin-bottom:16px; border-color:var(--accent); border-style:dashed;" x-show="showAddProvider">
+      <div style="font-weight:600; font-size:.9rem; color:var(--accent-2); margin-bottom:14px;">New Provider</div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
         <div>
-          <label class="label">ID (unique)</label>
-          <input class="input" x-model="newProvider.id" placeholder="ollama-local" />
+          <label class="inp-label">ID (unique)</label>
+          <input class="inp" x-model="newProvider.id" placeholder="ollama-local" />
         </div>
         <div>
-          <label class="label">Display name</label>
-          <input class="input" x-model="newProvider.name" placeholder="Local Ollama" />
+          <label class="inp-label">Display name</label>
+          <input class="inp" x-model="newProvider.name" placeholder="Local Ollama" />
         </div>
         <div>
-          <label class="label">Type</label>
-          <select class="input" x-model="newProvider.type">
+          <label class="inp-label">Type</label>
+          <select class="inp" x-model="newProvider.type">
             <option value="ollama">ollama</option>
             <option value="llamacpp">llama.cpp</option>
             <option value="openai_compat">OpenAI-compatible</option>
           </select>
         </div>
         <div>
-          <label class="label">URL</label>
-          <input class="input" x-model="newProvider.url" placeholder="http://localhost:11434" />
+          <label class="inp-label">URL</label>
+          <input class="inp" x-model="newProvider.url" placeholder="http://localhost:11434" />
         </div>
-        <div>
-          <label class="label">API Key (optional)</label>
-          <input class="input" type="password" x-model="newProvider.api_key" placeholder="sk-..." />
+        <div style="grid-column:span 2;">
+          <label class="inp-label">API Key (optional)</label>
+          <input class="inp" type="password" x-model="newProvider.api_key" placeholder="sk-…" />
         </div>
       </div>
-      <div class="flex gap-2 mt-3">
-        <button class="btn btn-primary" @click="saveProvider()">Save</button>
-        <button class="btn btn-ghost" @click="showAddProvider = false">Cancel</button>
+      <div style="display:flex; gap:8px; margin-top:14px;">
+        <button class="btn btn-primary btn-sm" @click="saveProvider()">Save</button>
+        <button class="btn btn-ghost btn-sm" @click="showAddProvider=false">Cancel</button>
       </div>
-      <p class="text-red-400 text-xs mt-2" x-show="providerError" x-text="providerError"></p>
+      <p style="color:var(--red); font-size:.78rem; margin-top:8px;" x-show="providerError" x-text="providerError"></p>
     </div>
 
     <!-- Provider list -->
-    <div class="space-y-3">
+    <div style="display:flex; flex-direction:column; gap:10px;">
       <template x-for="prov in config.providers ?? []" :key="prov.id">
         <div class="card">
-          <div class="flex flex-wrap items-center gap-3">
-            <span :class="prov.active ? 'badge-ok' : 'badge-off'" x-text="prov.active ? 'active' : 'inactive'"></span>
-            <span class="font-medium" x-text="prov.name"></span>
-            <span class="text-xs text-gray-400 font-mono" x-text="prov.url"></span>
-            <span class="text-xs bg-gray-700 px-2 py-0.5 rounded" x-text="prov.type"></span>
-
-            <div class="ml-auto flex gap-2 flex-wrap">
-              <button class="btn btn-ghost text-xs" @click="testProvider(prov)">Test</button>
-              <button class="btn btn-ghost text-xs" @click="fetchModels(prov)">Models</button>
-              <button class="btn btn-danger text-xs" @click="deleteProvider(prov.id)">Delete</button>
+          <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+            <span class="status-dot" :class="prov.active ? 'dot-green' : 'dot-gray'"></span>
+            <span style="font-weight:600; color:var(--text-1);" x-text="prov.name"></span>
+            <span class="badge badge-gray mono" x-text="prov.type"></span>
+            <span class="mono text-muted" style="font-size:.75rem;" x-text="prov.url"></span>
+            <div style="margin-left:auto; display:flex; gap:6px;">
+              <button class="btn btn-ghost btn-sm" @click="testProvider(prov)">Test</button>
+              <button class="btn btn-ghost btn-sm" @click="fetchModels(prov)">Models</button>
+              <button class="btn btn-danger btn-sm" @click="deleteProvider(prov.id)">Delete</button>
             </div>
           </div>
 
           <!-- Test result -->
-          <div class="mt-2 text-xs" x-show="providerTestResults[prov.id]">
+          <div style="margin-top:8px; font-size:.8rem;" x-show="providerTestResults[prov.id]">
             <template x-if="providerTestResults[prov.id]?.ok">
-              <span class="text-green-400">✓ Connected — version: <span x-text="providerTestResults[prov.id]?.version"></span></span>
+              <span style="color:var(--green);">✓ Connected — <span x-text="providerTestResults[prov.id]?.version"></span></span>
             </template>
             <template x-if="!providerTestResults[prov.id]?.ok && providerTestResults[prov.id]">
-              <span class="text-red-400">✗ <span x-text="providerTestResults[prov.id]?.error"></span></span>
+              <span style="color:var(--red);">✗ <span x-text="providerTestResults[prov.id]?.error"></span></span>
             </template>
           </div>
 
           <!-- Model list -->
-          <div class="mt-3" x-show="providerModels[prov.id]?.length > 0">
-            <div class="text-xs text-gray-400 mb-2">Available models — click to activate:</div>
-            <div class="flex flex-wrap gap-2">
+          <div style="margin-top:12px;" x-show="providerModels[prov.id]?.length > 0">
+            <div class="card-label" style="margin-bottom:8px;">Available models — click to activate</div>
+            <div style="display:flex; flex-wrap:wrap; gap:6px;">
               <template x-for="m in providerModels[prov.id] ?? []" :key="m.id">
                 <button
-                  class="text-xs px-2 py-1 rounded border transition-colors"
-                  :class="config.model?.name === m.id && config.model?.provider_id === prov.id
-                    ? 'border-indigo-500 bg-indigo-900 text-indigo-200'
-                    : 'border-gray-600 bg-gray-700 hover:border-indigo-400 text-gray-300'"
-                  @click="selectModel(prov, m)">
+                  style="font-size:.75rem; padding:4px 10px; border-radius:20px; border:1px solid; cursor:pointer; transition:all .15s;"
+                  :style="config.model?.name===m.id && config.model?.provider_id===prov.id
+                    ? 'border-color:var(--accent);background:var(--accent-dim);color:var(--accent-2);'
+                    : 'border-color:var(--border);background:var(--surface-2);color:var(--text-2);'"
+                  @click="selectModel(prov,m)">
                   <span x-text="m.id"></span>
-                  <span class="text-gray-500 ml-1" x-show="m.context_length" x-text="'(' + Math.round(m.context_length/1024) + 'k ctx)'"></span>
+                  <span style="color:var(--text-3); margin-left:4px;" x-show="m.context_length"
+                    x-text="'('+Math.round(m.context_length/1024)+'k)'"></span>
                 </button>
               </template>
             </div>
@@ -246,419 +653,403 @@
       </template>
     </div>
 
-    <!-- Model settings (shown when model selected) -->
-    <div class="card mt-4" x-show="config.model?.name">
-      <h3 class="text-sm font-semibold mb-3 text-indigo-300">
-        Model Settings — <span x-text="config.model?.name" class="font-mono"></span>
-      </h3>
-      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+    <!-- Model settings -->
+    <div class="card" style="margin-top:16px;" x-show="config.model?.name">
+      <div style="font-weight:600; font-size:.9rem; color:var(--accent-2); margin-bottom:14px;">
+        Model Settings — <span class="mono" x-text="config.model?.name"></span>
+      </div>
+      <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:16px;">
         <div>
-          <label class="label">Temperature</label>
-          <input class="input" type="number" step="0.05" min="0" max="2"
-            x-model.number="config.model.temperature" />
-          <p class="text-xs text-gray-500 mt-1">Lower = more focused (0.1–0.3 for code review)</p>
+          <label class="inp-label">Temperature</label>
+          <input class="inp" type="number" step="0.05" min="0" max="2" x-model.number="config.model.temperature" />
+          <p style="font-size:.73rem; color:var(--text-3); margin-top:5px;">Lower = focused (0.1–0.3 for review)</p>
         </div>
         <div>
-          <label class="label">Context Size (tokens)</label>
-          <input class="input" type="number" step="1024" min="1024"
-            x-model.number="config.model.context_size"
+          <label class="inp-label">Context Size (tokens)</label>
+          <input class="inp" type="number" step="1024" min="1024" x-model.number="config.model.context_size"
             :placeholder="modelInfo[config.model?.name]?.context_length ?? 'model default'" />
-          <p class="text-xs text-gray-500 mt-1">Leave empty for model default</p>
+          <p style="font-size:.73rem; color:var(--text-3); margin-top:5px;">Empty = model default</p>
         </div>
         <div>
-          <label class="label">Max Tokens (output)</label>
-          <input class="input" type="number" step="256" min="256"
-            x-model.number="config.model.max_tokens" />
+          <label class="inp-label">Max Tokens (output)</label>
+          <input class="inp" type="number" step="256" min="256" x-model.number="config.model.max_tokens" />
         </div>
       </div>
-      <div class="mt-3">
-        <button class="btn btn-primary" @click="saveModelSettings()">Save Model Settings</button>
-        <span class="text-green-400 text-xs ml-3" x-show="modelSaved">✓ Saved</span>
+      <div style="display:flex; align-items:center; gap:10px; margin-top:14px;">
+        <button class="btn btn-primary btn-sm" @click="saveModelSettings()">Save Model Settings</button>
+        <span style="color:var(--green); font-size:.8rem;" x-show="modelSaved">✓ Saved</span>
       </div>
     </div>
   </div>
 
-  <!-- ── PROMPTS ────────────────────────────────────────────────── -->
+  <!-- ───────────────── PROMPTS ───────────────── -->
   <div x-show="activeTab === 'prompts'">
-    <h2 class="text-lg font-semibold mb-4">Prompt Configuration</h2>
+    <div class="section-title">Prompt Configuration</div>
 
-    <div class="card mb-4">
-      <div class="text-xs text-gray-400 mb-3 uppercase tracking-wide">Active Prompt Stack (in order)</div>
-      <div class="flex flex-wrap gap-2 mb-3">
+    <div class="card" style="margin-bottom:16px;">
+      <div class="card-label">Active Prompt Stack (in order)</div>
+      <div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px;">
         <template x-for="(name, idx) in config.prompts?.system ?? []" :key="idx">
-          <div class="flex items-center bg-gray-700 border border-gray-600 rounded-lg px-3 py-1.5 text-sm">
-            <span class="text-gray-400 text-xs mr-2" x-text="idx + 1"></span>
+          <div class="prompt-chip">
+            <span class="chip-idx" x-text="idx+1"></span>
             <span x-text="name"></span>
-            <span x-show="idx === 0" class="ml-2 text-xs text-yellow-400">(required)</span>
-            <button x-show="idx > 0" class="ml-2 text-gray-500 hover:text-red-400"
-              @click="removePrompt(idx)">×</button>
+            <span x-show="idx===0" style="font-size:.65rem; color:var(--yellow); margin-left:2px;">(required)</span>
+            <span x-show="idx>0" class="chip-rm" @click="removePrompt(idx)">×</span>
           </div>
         </template>
       </div>
-      <div class="flex gap-2">
-        <select class="input max-w-xs" x-model="promptToAdd">
-          <option value="">Add prompt...</option>
-          <option value="security">security</option>
-          <option value="performance">performance</option>
-          <option value="style">style</option>
-        </select>
-        <input class="input max-w-xs" x-model="promptToAdd" placeholder="or type custom name" />
-        <button class="btn btn-primary" @click="addPrompt()" :disabled="!promptToAdd">Add</button>
+      <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end;">
+        <div>
+          <label class="inp-label">Add prompt</label>
+          <div style="display:flex; gap:6px;">
+            <select class="inp" style="width:200px;" x-model="promptToAdd">
+              <option value="">Choose built-in…</option>
+              <option value="security">security</option>
+              <option value="performance">performance</option>
+              <option value="style">style</option>
+            </select>
+            <input class="inp" style="width:180px;" x-model="promptToAdd" placeholder="or type custom name" />
+            <button class="btn btn-primary btn-sm" @click="addPrompt()" :disabled="!promptToAdd">Add</button>
+          </div>
+        </div>
       </div>
     </div>
 
-    <div class="text-xs text-gray-400 mb-2">
-      Prompts compose with <code class="bg-gray-700 px-1 rounded">{{include: name}}</code> — place files in <code class="bg-gray-700 px-1 rounded">prompts/custom/</code> to override built-ins.
+    <div class="notice notice-info" style="margin-bottom:16px;">
+      <span class="notice-icon">💡</span>
+      <span>Prompts compose with <code>{{include: name}}</code> — place files in <code>prompts/custom/</code> to override built-ins.</span>
     </div>
 
-    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
       <template x-for="name in ['base','code_review','security','performance','style']" :key="name">
-        <div class="card text-sm">
-          <div class="flex items-center justify-between mb-1">
-            <span class="font-mono text-indigo-300" x-text="name + '.md'"></span>
-            <span :class="(config.prompts?.system ?? []).includes(name) ? 'badge-ok' : 'badge-off'"
-              x-text="(config.prompts?.system ?? []).includes(name) ? 'active' : 'inactive'"></span>
+        <div class="card" style="display:flex; align-items:flex-start; justify-content:space-between; gap:10px;">
+          <div style="flex:1;">
+            <div class="mono text-accent" style="font-size:.82rem; margin-bottom:5px;" x-text="name+'.md'"></div>
+            <div style="font-size:.78rem; color:var(--text-3);" x-text="{
+              base: 'Role definition + anti-injection rules (always first)',
+              code_review: 'Review format, output structure, principles',
+              security: 'Injection, auth, crypto, secrets checks',
+              performance: 'N+1, O(n²), blocking async, indexes',
+              style: 'Naming, nesting, error handling, tests'
+            }[name]"></div>
           </div>
-          <div class="text-xs text-gray-400" x-text="{
-            base: 'Role definition + anti-injection rules (always first)',
-            code_review: 'Review format, output structure, principles',
-            security: 'Injection, auth, crypto, secrets checks',
-            performance: 'N+1, O(n²), blocking async, indexes',
-            style: 'Naming, nesting, error handling, tests'
-          }[name]"></div>
+          <span :class="(config.prompts?.system??[]).includes(name) ? 'badge badge-green' : 'badge badge-gray'"
+            x-text="(config.prompts?.system??[]).includes(name) ? 'active' : 'off'"></span>
         </div>
       </template>
     </div>
 
-    <div class="mt-4">
+    <div style="display:flex; align-items:center; gap:10px; margin-top:16px;">
       <button class="btn btn-primary" @click="savePromptConfig()">Save Prompt Config</button>
-      <span class="text-green-400 text-xs ml-3" x-show="promptSaved">✓ Saved</span>
+      <span style="color:var(--green); font-size:.8rem;" x-show="promptSaved">✓ Saved</span>
     </div>
   </div>
 
-  <!-- ── GITLAB ─────────────────────────────────────────────────── -->
+  <!-- ───────────────── GITLAB ───────────────── -->
   <div x-show="activeTab === 'gitlab'">
-    <h2 class="text-lg font-semibold mb-4">GitLab Connection</h2>
+    <div class="section-title">GitLab Connection</div>
 
-    <div class="card mb-4">
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+    <div class="card" style="margin-bottom:20px;">
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
         <div>
-          <label class="label">GitLab URL</label>
-          <input class="input" x-model="config.gitlab.url" placeholder="https://gitlab.example.com" />
+          <label class="inp-label">GitLab URL</label>
+          <input class="inp" x-model="config.gitlab.url" placeholder="https://gitlab.example.com" />
         </div>
         <div>
-          <label class="label">Auth type</label>
-          <select class="input" x-model="config.gitlab.auth_type">
-            <option value="token">Personal/Project Token</option>
+          <label class="inp-label">Auth type</label>
+          <select class="inp" x-model="config.gitlab.auth_type">
+            <option value="token">Personal / Project Token</option>
             <option value="basic">Username + Password</option>
           </select>
         </div>
-        <div x-show="config.gitlab.auth_type === 'token'">
-          <label class="label">Token (env: GLR_GITLAB_TOKEN)</label>
-          <input class="input" type="password" placeholder="Set via env var — not stored in config" disabled />
-          <p class="text-xs text-gray-500 mt-1">Set <code>GLR_GITLAB_TOKEN</code> in your .env file</p>
+        <div x-show="config.gitlab.auth_type==='token'">
+          <label class="inp-label">Token <span class="text-muted">(env: GLR_GITLAB_TOKEN)</span></label>
+          <input class="inp" type="password" placeholder="Set via env var — not stored in config" disabled />
+          <p style="font-size:.73rem; color:var(--text-3); margin-top:5px;">Set <code>GLR_GITLAB_TOKEN</code> in your .env file</p>
         </div>
-        <div x-show="config.gitlab.auth_type === 'basic'">
-          <label class="label">Username</label>
-          <input class="input" x-model="gitlabUsername" placeholder="your-username" />
-          <label class="label mt-2">Password (env: GLR_GITLAB_PASSWORD)</label>
-          <input class="input" type="password" placeholder="Set via env var" disabled />
+        <div x-show="config.gitlab.auth_type==='basic'">
+          <label class="inp-label">Username</label>
+          <input class="inp" x-model="gitlabUsername" placeholder="your-username" />
         </div>
         <div>
-          <label class="label">Webhook Secret (env: GLR_WEBHOOK_SECRET)</label>
-          <input class="input" type="password" placeholder="Set via env var — not stored in config" disabled />
-          <p class="text-xs text-gray-500 mt-1">Configure this value in GitLab webhook settings</p>
+          <label class="inp-label">Webhook Secret <span class="text-muted">(env: GLR_WEBHOOK_SECRET)</span></label>
+          <input class="inp" type="password" placeholder="Set via env var — not stored in config" disabled />
         </div>
-        <div class="flex items-center gap-2 pt-4">
-          <input type="checkbox" id="tls-verify" x-model="config.gitlab.tls_verify" class="rounded" />
-          <label for="tls-verify" class="text-sm">Verify TLS certificate</label>
+        <div style="display:flex; align-items:center; gap:8px; padding-top:20px;">
+          <label class="toggle">
+            <input type="checkbox" x-model="config.gitlab.tls_verify" />
+            <div class="toggle-track"><div class="toggle-thumb"></div></div>
+            <span class="toggle-label">Verify TLS certificate</span>
+          </label>
         </div>
       </div>
-      <div class="flex gap-2 mt-4 flex-wrap">
-        <button class="btn btn-primary" @click="saveGitLabConfig()">Save</button>
-        <button class="btn btn-ghost" @click="testGitLab()">Test Connection</button>
-      </div>
-      <div class="mt-2 text-sm" x-show="gitlabTestResult">
-        <template x-if="gitlabTestResult?.ok">
-          <span class="text-green-400">
-            ✓ Connected — GitLab <span x-text="gitlabTestResult.version"></span>
-            as <strong x-text="gitlabTestResult.username"></strong>
-          </span>
-        </template>
-        <template x-if="gitlabTestResult && !gitlabTestResult.ok">
-          <span class="text-red-400">✗ <span x-text="gitlabTestResult.error"></span></span>
-        </template>
+      <div style="display:flex; gap:8px; margin-top:16px; flex-wrap:wrap; align-items:center;">
+        <button class="btn btn-primary btn-sm" @click="saveGitLabConfig()">Save</button>
+        <button class="btn btn-ghost btn-sm" @click="testGitLab()">Test Connection</button>
+        <div style="font-size:.83rem;" x-show="gitlabTestResult">
+          <template x-if="gitlabTestResult?.ok">
+            <span style="color:var(--green);">✓ GitLab <span x-text="gitlabTestResult.version"></span> as <strong x-text="gitlabTestResult.username"></strong></span>
+          </template>
+          <template x-if="gitlabTestResult && !gitlabTestResult.ok">
+            <span style="color:var(--red);">✗ <span x-text="gitlabTestResult.error"></span></span>
+          </template>
+        </div>
       </div>
     </div>
 
     <!-- Review Targets -->
-    <div class="flex items-center justify-between mb-3">
-      <h3 class="font-semibold">Review Targets</h3>
-      <button class="btn btn-primary text-xs" @click="showAddTarget = !showAddTarget">+ Add Target</button>
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+      <div style="font-weight:600; font-size:.9rem; color:var(--text-1);">Review Targets</div>
+      <button class="btn btn-primary btn-sm" @click="showAddTarget = !showAddTarget">+ Add Target</button>
     </div>
 
-    <div class="card mb-3" x-show="showAddTarget">
-      <h4 class="text-sm font-semibold mb-3 text-indigo-300">New Review Target</h4>
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+    <div class="card" style="margin-bottom:12px;" x-show="showAddTarget">
+      <div style="font-weight:600; font-size:.88rem; color:var(--accent-2); margin-bottom:12px;">New Review Target</div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
         <div>
-          <label class="label">Type</label>
-          <select class="input" x-model="newTarget.type">
+          <label class="inp-label">Type</label>
+          <select class="inp" x-model="newTarget.type">
             <option value="all">All projects (accessible by token)</option>
             <option value="group">Specific group</option>
             <option value="project">Specific project</option>
           </select>
         </div>
-        <div x-show="newTarget.type === 'group'">
-          <label class="label">Group (search)</label>
-          <input class="input" x-model="newTarget.groupSearch" @input.debounce.400ms="searchGroups()" placeholder="group name..." />
-          <div class="mt-1 space-y-1" x-show="groups.length > 0">
+        <div x-show="newTarget.type==='group'">
+          <label class="inp-label">Group (search)</label>
+          <input class="inp" x-model="newTarget.groupSearch" @input.debounce.400ms="searchGroups()" placeholder="group name…" />
+          <div style="margin-top:6px;" x-show="groups.length>0">
             <template x-for="g in groups" :key="g.id">
-              <button class="text-xs w-full text-left px-2 py-1 rounded hover:bg-gray-700"
-                :class="newTarget.id == g.id ? 'bg-indigo-900 text-indigo-200' : 'text-gray-300'"
-                @click="newTarget.id = String(g.id); newTarget.groupName = g.full_path">
+              <button style="display:block; width:100%; text-align:left; padding:5px 8px; border-radius:5px; font-size:.78rem; cursor:pointer;"
+                :style="newTarget.id==g.id ? 'background:var(--accent-dim);color:var(--accent-2);' : 'color:var(--text-2);'"
+                @click="newTarget.id=String(g.id); newTarget.groupName=g.full_path">
                 <span x-text="g.full_path"></span>
               </button>
             </template>
           </div>
         </div>
-        <div x-show="newTarget.type === 'project'">
-          <label class="label">Project (search)</label>
-          <input class="input" x-model="newTarget.projectSearch" @input.debounce.400ms="searchProjects()" placeholder="project name..." />
-          <div class="mt-1 space-y-1" x-show="projects.length > 0">
+        <div x-show="newTarget.type==='project'">
+          <label class="inp-label">Project (search)</label>
+          <input class="inp" x-model="newTarget.projectSearch" @input.debounce.400ms="searchProjects()" placeholder="project name…" />
+          <div style="margin-top:6px;" x-show="projects.length>0">
             <template x-for="p in projects" :key="p.id">
-              <button class="text-xs w-full text-left px-2 py-1 rounded hover:bg-gray-700"
-                :class="newTarget.id == p.id ? 'bg-indigo-900 text-indigo-200' : 'text-gray-300'"
-                @click="newTarget.id = String(p.id); newTarget.projectName = p.path">
+              <button style="display:block; width:100%; text-align:left; padding:5px 8px; border-radius:5px; font-size:.78rem; cursor:pointer;"
+                :style="newTarget.id==p.id ? 'background:var(--accent-dim);color:var(--accent-2);' : 'color:var(--text-2);'"
+                @click="newTarget.id=String(p.id); newTarget.projectName=p.path">
                 <span x-text="p.path"></span>
               </button>
             </template>
           </div>
         </div>
         <div>
-          <label class="label">Branch pattern (glob, comma = OR)</label>
-          <input class="input" x-model="newTarget.branchPattern" placeholder="main,develop,release/*" />
+          <label class="inp-label">Branch pattern</label>
+          <input class="inp" x-model="newTarget.branchPattern" placeholder="main,develop,release/*" />
         </div>
-        <div class="flex flex-col gap-2 pt-4">
-          <label class="flex items-center gap-2 text-sm">
-            <input type="checkbox" x-model="newTarget.protectedOnly" class="rounded" />
-            Only protected branches
+        <div style="display:flex; flex-direction:column; gap:10px; padding-top:20px;">
+          <label class="toggle">
+            <input type="checkbox" x-model="newTarget.protectedOnly" />
+            <div class="toggle-track"><div class="toggle-thumb"></div></div>
+            <span class="toggle-label" style="font-size:.82rem;">Only protected branches</span>
           </label>
-          <label class="flex items-center gap-2 text-sm">
-            <input type="checkbox" x-model="newTarget.autoApprove" class="rounded" />
-            Auto-approve when review passes
+          <label class="toggle">
+            <input type="checkbox" x-model="newTarget.autoApprove" />
+            <div class="toggle-track"><div class="toggle-thumb"></div></div>
+            <span class="toggle-label" style="font-size:.82rem;">Auto-approve when review passes</span>
           </label>
         </div>
       </div>
-      <div class="flex gap-2 mt-3">
-        <button class="btn btn-primary" @click="saveTarget()">Add Target</button>
-        <button class="btn btn-ghost" @click="showAddTarget = false">Cancel</button>
+      <div style="display:flex; gap:8px; margin-top:14px;">
+        <button class="btn btn-primary btn-sm" @click="saveTarget()">Add Target</button>
+        <button class="btn btn-ghost btn-sm" @click="showAddTarget=false">Cancel</button>
       </div>
     </div>
 
-    <div class="space-y-2">
+    <div style="display:flex; flex-direction:column; gap:8px;">
       <template x-for="(t, idx) in config.review_targets ?? []" :key="idx">
-        <div class="card flex flex-wrap items-center gap-3">
-          <span class="text-xs bg-gray-700 px-2 py-0.5 rounded" x-text="t.type"></span>
-          <span class="font-mono text-sm" x-text="t.id || 'all'"></span>
-          <span class="text-xs text-gray-400">branches: <span x-text="t.branches?.pattern ?? '*'"></span></span>
+        <div class="card" style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+          <span class="badge badge-violet" x-text="t.type"></span>
+          <span class="mono" style="font-size:.82rem;" x-text="t.id || 'all'"></span>
+          <span style="font-size:.78rem; color:var(--text-3);">branches: <span style="color:var(--text-2);" x-text="t.branches?.pattern ?? '*'"></span></span>
           <template x-if="t.branches?.protected_only">
-            <span class="badge-ok text-xs">protected only</span>
+            <span class="badge badge-blue">🔒 protected</span>
           </template>
           <template x-if="t.auto_approve">
-            <span class="text-xs bg-blue-900 text-blue-300 px-2 py-0.5 rounded">auto-approve</span>
+            <span class="badge badge-green">✓ auto-approve</span>
           </template>
-          <button class="ml-auto btn btn-danger text-xs" @click="removeTarget(idx)">Remove</button>
+          <button class="btn btn-danger btn-sm" style="margin-left:auto;" @click="removeTarget(idx)">Remove</button>
         </div>
       </template>
-      <div class="text-gray-500 text-sm" x-show="!config.review_targets?.length">
+      <div x-show="!config.review_targets?.length" class="notice notice-info">
+        <span class="notice-icon">ℹ</span>
         No targets configured — all accessible MRs will be reviewed.
       </div>
     </div>
   </div>
 
-  <!-- ── QUEUE ──────────────────────────────────────────────────── -->
+  <!-- ───────────────── QUEUE ───────────────── -->
   <div x-show="activeTab === 'queue'">
-    <div class="flex items-center justify-between mb-4">
-      <h2 class="text-lg font-semibold">Queue Settings</h2>
-    </div>
+    <div class="section-title">Queue Settings</div>
 
-    <div class="card mb-4">
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+    <div class="card" style="margin-bottom:20px;">
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
         <div>
-          <label class="label">Backend</label>
-          <select class="input" x-model="config.queue.backend">
+          <label class="inp-label">Backend</label>
+          <select class="inp" x-model="config.queue.backend">
             <option value="memory">memory (single instance)</option>
-            <option value="valkey">Valkey/Redis (multi-instance)</option>
+            <option value="valkey">Valkey / Redis (multi-instance)</option>
           </select>
         </div>
         <div>
-          <label class="label">Max concurrent reviews</label>
-          <input class="input" type="number" min="1" max="20" x-model.number="config.queue.max_concurrent" />
-          <p class="text-xs text-gray-500 mt-1">How many LLM calls can run simultaneously</p>
+          <label class="inp-label">Max concurrent reviews</label>
+          <input class="inp" type="number" min="1" max="20" x-model.number="config.queue.max_concurrent" />
+          <p style="font-size:.73rem; color:var(--text-3); margin-top:5px;">Simultaneous LLM calls</p>
         </div>
         <div>
-          <label class="label">Max queue size</label>
-          <input class="input" type="number" min="1" x-model.number="config.queue.max_queue_size" />
-          <p class="text-xs text-gray-500 mt-1">Drop incoming webhooks if queue exceeds this</p>
+          <label class="inp-label">Max queue size</label>
+          <input class="inp" type="number" min="1" x-model.number="config.queue.max_queue_size" />
+          <p style="font-size:.73rem; color:var(--text-3); margin-top:5px;">Drop incoming webhooks if exceeded</p>
         </div>
-        <div x-show="config.queue.backend === 'valkey'">
-          <label class="label">Valkey URL</label>
-          <input class="input" x-model="config.queue.valkey_url" placeholder="redis://localhost:6379" />
+        <div x-show="config.queue.backend==='valkey'">
+          <label class="inp-label">Valkey URL</label>
+          <input class="inp" x-model="config.queue.valkey_url" placeholder="redis://localhost:6379" />
         </div>
       </div>
-      <div class="mt-4 flex gap-2">
-        <button class="btn btn-primary" @click="saveQueueConfig()">Save</button>
-        <button class="btn btn-danger" @click="drainQueue()">Drain Queue</button>
-        <span class="text-green-400 text-xs self-center" x-show="queueSaved">✓ Saved</span>
+      <div style="display:flex; gap:8px; align-items:center; margin-top:16px;">
+        <button class="btn btn-primary btn-sm" @click="saveQueueConfig()">Save</button>
+        <button class="btn btn-danger btn-sm" @click="drainQueue()">Drain Queue</button>
+        <span style="color:var(--green); font-size:.8rem;" x-show="queueSaved">✓ Saved</span>
       </div>
     </div>
 
     <!-- Live stats -->
-    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
-      <template x-for="[label, key, color] in [
-          ['Pending', 'pending', 'text-yellow-400'],
-          ['Active',  'active',  'text-indigo-400'],
-          ['Done',    'done',    'text-green-400'],
-          ['Errors',  'errors',  'text-red-400']]" :key="key">
-        <div class="card text-center">
-          <div class="text-3xl font-bold" :class="color" x-text="queue[key]"></div>
-          <div class="text-xs text-gray-400 mt-1" x-text="label"></div>
+    <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:20px;">
+      <template x-for="[lbl, key, color] in [
+          ['Pending', 'pending', 'var(--yellow)'],
+          ['Active',  'active',  'var(--accent-2)'],
+          ['Done',    'done',    'var(--green)'],
+          ['Errors',  'errors',  'var(--red)']]" :key="key">
+        <div class="card" style="text-align:center; padding:20px 12px;">
+          <div class="stat-num" :style="'color:'+color" x-text="queue[key]"></div>
+          <div class="stat-lbl" x-text="lbl"></div>
         </div>
       </template>
     </div>
 
     <!-- Review Defaults -->
-    <h3 class="font-semibold mb-3">Review Defaults</h3>
-    <div class="card mb-4">
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+    <div style="font-weight:600; font-size:.9rem; color:var(--text-1); margin-bottom:12px;">Review Defaults</div>
+    <div class="card">
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
         <div>
-          <label class="label">Max files per review</label>
-          <input class="input" type="number" min="1" max="500"
-            x-model.number="config.max_files_per_review" />
-          <p class="text-xs text-gray-500 mt-1">Files beyond this limit are ignored in the diff</p>
+          <label class="inp-label">Max files per review</label>
+          <input class="inp" type="number" min="1" max="500" x-model.number="config.max_files_per_review" />
+          <p style="font-size:.73rem; color:var(--text-3); margin-top:5px;">Files beyond limit are skipped</p>
         </div>
         <div>
-          <label class="label">Cooldown (minutes)</label>
-          <input class="input" type="number" min="0"
-            x-model.number="config.review_cooldown_minutes" />
-          <p class="text-xs text-gray-500 mt-1">0 = disabled. Skip re-reviews within this window</p>
+          <label class="inp-label">Cooldown (minutes)</label>
+          <input class="inp" type="number" min="0" x-model.number="config.review_cooldown_minutes" />
+          <p style="font-size:.73rem; color:var(--text-3); margin-top:5px;">0 = disabled</p>
         </div>
       </div>
-
-      <!-- File exclusions -->
-      <div class="mt-4">
-        <label class="label">File exclusion patterns</label>
-        <textarea class="input font-mono text-xs" rows="6"
+      <hr class="divider" />
+      <div>
+        <label class="inp-label">File exclusion patterns</label>
+        <textarea class="inp mono" rows="6" style="resize:vertical;"
           :value="(config.file_exclude ?? []).join('\n')"
-          @input="config.file_exclude = $event.target.value.split('\n').map(l => l.trim()).filter(Boolean)"
+          @input="config.file_exclude = $event.target.value.split('\n').map(l=>l.trim()).filter(Boolean)"
           placeholder="*.lock&#10;vendor/**&#10;node_modules/**&#10;*.min.js&#10;dist/**"></textarea>
-        <p class="text-xs text-gray-500 mt-1">
-          One pattern per line. Supports fnmatch globs and <code>dir/**</code> prefix matching.
-          These apply globally; per-target overrides are set in the Targets tab.
-        </p>
+        <p style="font-size:.73rem; color:var(--text-3); margin-top:5px;">One pattern per line · fnmatch globs · <code>dir/**</code> prefix matching</p>
       </div>
-
-      <div class="mt-4 flex gap-2">
-        <button class="btn btn-primary" @click="saveReviewDefaults()">Save Review Defaults</button>
-        <span class="text-green-400 text-xs self-center" x-show="reviewDefaultsSaved">✓ Saved</span>
+      <div style="display:flex; align-items:center; gap:10px; margin-top:14px;">
+        <button class="btn btn-primary btn-sm" @click="saveReviewDefaults()">Save Defaults</button>
+        <span style="color:var(--green); font-size:.8rem;" x-show="reviewDefaultsSaved">✓ Saved</span>
       </div>
     </div>
   </div>
 
-  <!-- ── NOTIFICATIONS ───────────────────────────────────────────── -->
+  <!-- ───────────────── NOTIFICATIONS ───────────────── -->
   <div x-show="activeTab === 'notifications'">
-    <div class="flex items-center justify-between mb-4">
-      <h2 class="text-lg font-semibold">Notification Webhooks</h2>
-    </div>
+    <div class="section-title">Notification Webhooks</div>
 
-    <div class="card mb-4">
-      <!-- Enable toggle -->
-      <div class="flex items-center gap-3 mb-4">
-        <label class="relative inline-flex items-center cursor-pointer">
-          <input type="checkbox" class="sr-only peer" x-model="config.notifications.enabled">
-          <div class="w-11 h-6 bg-gray-600 rounded-full peer peer-checked:bg-indigo-600
-                      after:content-[''] after:absolute after:top-[2px] after:left-[2px]
-                      after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all
-                      peer-checked:after:translate-x-full"></div>
+    <div class="card">
+      <!-- Toggle -->
+      <div style="display:flex; align-items:center; gap:14px; margin-bottom:20px; padding-bottom:16px; border-bottom:1px solid var(--border);">
+        <label class="toggle">
+          <input type="checkbox" x-model="config.notifications.enabled" />
+          <div class="toggle-track"><div class="toggle-thumb"></div></div>
+          <span class="toggle-label" style="font-weight:600;">Notifications enabled</span>
         </label>
-        <span class="font-medium">Notifications enabled</span>
       </div>
 
-      <div :class="config.notifications.enabled ? '' : 'opacity-40 pointer-events-none'">
-        <!-- Format selector -->
-        <div class="mb-4">
-          <label class="label">Notification format</label>
-          <select class="input" x-model="config.notifications.format">
-            <option value="generic">Generic JSON (n8n, Zapier, custom)</option>
-            <option value="slack">Slack Incoming Webhook</option>
-            <option value="telegram">Telegram Bot API</option>
-          </select>
-        </div>
-
-        <!-- Webhook URL (generic / slack) -->
-        <div class="mb-4" x-show="config.notifications.format !== 'telegram'">
-          <label class="label" x-text="config.notifications.format === 'slack' ? 'Slack Webhook URL' : 'Webhook URL'"></label>
-          <input class="input" type="url" x-model="config.notifications.webhook_url"
-            placeholder="https://hooks.slack.com/services/..." />
-          <p class="text-xs text-gray-500 mt-1">POST target for review events</p>
-        </div>
-
-        <!-- Telegram config -->
-        <div class="space-y-3 mb-4" x-show="config.notifications.format === 'telegram'">
+      <div :style="config.notifications.enabled ? '' : 'opacity:.4; pointer-events:none;'">
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px;">
           <div>
-            <label class="label">Bot Token</label>
-            <input class="input" type="password" x-model="config.notifications.telegram_bot_token"
-              placeholder="123456789:ABC... (or set GLR_TELEGRAM_BOT_TOKEN)" />
-            <p class="text-xs text-gray-500 mt-1">Get from @BotFather on Telegram</p>
+            <label class="inp-label">Notification format</label>
+            <select class="inp" x-model="config.notifications.format">
+              <option value="generic">Generic JSON (n8n, Zapier, custom)</option>
+              <option value="slack">Slack Incoming Webhook</option>
+              <option value="telegram">Telegram Bot API</option>
+            </select>
           </div>
-          <div>
-            <label class="label">Chat ID</label>
-            <input class="input" x-model="config.notifications.telegram_chat_id"
-              placeholder="-100123456789 (group) or 123456 (DM)" />
-            <p class="text-xs text-gray-500 mt-1">Negative = group/channel; positive = DM</p>
+          <div x-show="config.notifications.format !== 'telegram'">
+            <label class="inp-label" x-text="config.notifications.format==='slack' ? 'Slack Webhook URL' : 'Webhook URL'"></label>
+            <input class="inp" type="url" x-model="config.notifications.webhook_url"
+              placeholder="https://hooks.slack.com/services/…" />
           </div>
         </div>
 
-        <!-- Event triggers -->
-        <div class="mb-4">
-          <label class="label">Notify on</label>
-          <div class="space-y-2">
-            <label class="flex items-center gap-2 cursor-pointer">
-              <input type="checkbox" class="rounded" x-model="config.notifications.on_posted">
-              <span class="text-sm">✅ Review posted successfully</span>
+        <div x-show="config.notifications.format==='telegram'" style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:16px;">
+          <div>
+            <label class="inp-label">Bot Token</label>
+            <input class="inp" type="password" x-model="config.notifications.telegram_bot_token"
+              placeholder="123456789:ABC… (or GLR_TELEGRAM_BOT_TOKEN)" />
+            <p style="font-size:.73rem; color:var(--text-3); margin-top:5px;">Get from @BotFather</p>
+          </div>
+          <div>
+            <label class="inp-label">Chat ID</label>
+            <input class="inp" x-model="config.notifications.telegram_chat_id"
+              placeholder="-100123456789 or 123456" />
+          </div>
+        </div>
+
+        <div style="margin-bottom:16px;">
+          <div class="inp-label">Notify on</div>
+          <div style="display:flex; flex-direction:column; gap:8px;">
+            <label class="toggle">
+              <input type="checkbox" x-model="config.notifications.on_posted" />
+              <div class="toggle-track"><div class="toggle-thumb"></div></div>
+              <span class="toggle-label" style="font-size:.82rem;">✅ Review posted successfully</span>
             </label>
-            <label class="flex items-center gap-2 cursor-pointer">
-              <input type="checkbox" class="rounded" x-model="config.notifications.on_error">
-              <span class="text-sm">❌ Review error</span>
+            <label class="toggle">
+              <input type="checkbox" x-model="config.notifications.on_error" />
+              <div class="toggle-track"><div class="toggle-thumb"></div></div>
+              <span class="toggle-label" style="font-size:.82rem;">❌ Review error</span>
             </label>
-            <label class="flex items-center gap-2 cursor-pointer">
-              <input type="checkbox" class="rounded" x-model="config.notifications.on_skipped">
-              <span class="text-sm">⏭️ Review skipped (draft, filter, dedup)</span>
+            <label class="toggle">
+              <input type="checkbox" x-model="config.notifications.on_skipped" />
+              <div class="toggle-track"><div class="toggle-thumb"></div></div>
+              <span class="toggle-label" style="font-size:.82rem;">⏭ Review skipped</span>
             </label>
           </div>
         </div>
       </div>
 
-      <!-- Actions -->
-      <div class="flex flex-wrap gap-2 mt-4">
-        <button class="btn btn-primary" @click="saveNotifications()">Save</button>
-        <button class="btn"
-          x-show="config.notifications.enabled"
-          @click="testNotification()"
-          :disabled="notificationTestResult === 'testing'">
-          <span x-show="notificationTestResult !== 'testing'">🔔 Send Test</span>
-          <span x-show="notificationTestResult === 'testing'">Sending…</span>
+      <hr class="divider" />
+      <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+        <button class="btn btn-primary btn-sm" @click="saveNotifications()">Save</button>
+        <button class="btn btn-ghost btn-sm" x-show="config.notifications.enabled"
+          @click="testNotification()" :disabled="notificationTestResult==='testing'">
+          <span x-show="notificationTestResult!=='testing'">🔔 Send Test</span>
+          <span x-show="notificationTestResult==='testing'">Sending…</span>
         </button>
-        <span class="text-green-400 text-xs self-center" x-show="notificationSaved">✓ Saved</span>
-        <span class="text-green-400 text-xs self-center" x-show="notificationTestResult === 'ok'">✓ Test sent!</span>
-        <span class="text-red-400 text-xs self-center" x-show="notificationTestResult === 'error'">✗ Test failed — check URL/token</span>
+        <span style="color:var(--green); font-size:.8rem;" x-show="notificationSaved">✓ Saved</span>
+        <span style="color:var(--green); font-size:.8rem;" x-show="notificationTestResult==='ok'">✓ Test sent!</span>
+        <span style="color:var(--red); font-size:.8rem;" x-show="notificationTestResult==='error'">✗ Test failed</span>
       </div>
     </div>
 
     <!-- Payload preview -->
-    <div class="card mt-4">
-      <h3 class="font-semibold mb-2">Generic payload preview</h3>
-      <pre class="bg-gray-900 rounded p-3 text-xs overflow-auto text-green-300">{
+    <div class="card" style="margin-top:16px;">
+      <div class="card-label">Generic payload preview</div>
+      <pre style="background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:14px; font-size:.75rem; overflow:auto; color:var(--green); line-height:1.6;">{
   "event": "review_complete",
   "status": "posted",
   "project_id": "42",
@@ -674,121 +1065,106 @@
     </div>
   </div>
 
-  <!-- ── TARGETS ──────────────────────────────────────────────────── -->
+  <!-- ───────────────── TARGETS ───────────────── -->
   <div x-show="activeTab === 'targets'">
-    <div class="flex items-center justify-between mb-4">
-      <h2 class="text-lg font-semibold">Review Targets</h2>
-      <button class="btn btn-primary text-sm" @click="showAddTargetModal = !showAddTargetModal">
-        + Add Target
-      </button>
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px;">
+      <div class="section-title" style="margin-bottom:0;">Review Targets</div>
+      <button class="btn btn-primary btn-sm" @click="showAddTargetModal = !showAddTargetModal">+ Add Target</button>
     </div>
 
-    <!-- Add Target form -->
-    <div x-show="showAddTargetModal" class="card mb-4 space-y-3">
-      <h3 class="font-semibold text-sm">New Review Target</h3>
-      <div class="grid grid-cols-2 gap-3">
+    <div class="card" style="margin-bottom:16px;" x-show="showAddTargetModal">
+      <div style="font-weight:600; font-size:.9rem; color:var(--accent-2); margin-bottom:14px;">New Review Target</div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
         <div>
-          <label class="label">Type</label>
-          <select class="input" x-model="newTargetForm.type">
+          <label class="inp-label">Type</label>
+          <select class="inp" x-model="newTargetForm.type">
             <option value="all">all (every project)</option>
             <option value="project">project</option>
             <option value="group">group</option>
           </select>
         </div>
         <div>
-          <label class="label">Project / Group ID</label>
-          <input class="input" x-model="newTargetForm.id" placeholder="42 (empty for all)" />
+          <label class="inp-label">Project / Group ID</label>
+          <input class="inp" x-model="newTargetForm.id" placeholder="42 (empty for all)" />
         </div>
         <div>
-          <label class="label">Branch Pattern</label>
-          <input class="input" x-model="newTargetForm.branchPattern" placeholder="main,release/*" />
+          <label class="inp-label">Branch Pattern</label>
+          <input class="inp" x-model="newTargetForm.branchPattern" placeholder="main,release/*" />
         </div>
-        <div class="flex items-center gap-4 pt-4">
-          <label class="flex items-center gap-2 text-sm">
-            <input type="checkbox" x-model="newTargetForm.protectedOnly" class="accent-indigo-500" />
-            Protected only
+        <div style="display:flex; gap:16px; align-items:center; padding-top:20px;">
+          <label class="toggle">
+            <input type="checkbox" x-model="newTargetForm.protectedOnly" />
+            <div class="toggle-track"><div class="toggle-thumb"></div></div>
+            <span class="toggle-label" style="font-size:.82rem;">Protected only</span>
           </label>
-          <label class="flex items-center gap-2 text-sm">
-            <input type="checkbox" x-model="newTargetForm.autoApprove" class="accent-green-500" />
-            Auto-approve
+          <label class="toggle">
+            <input type="checkbox" x-model="newTargetForm.autoApprove" />
+            <div class="toggle-track"><div class="toggle-thumb"></div></div>
+            <span class="toggle-label" style="font-size:.82rem;">Auto-approve</span>
           </label>
         </div>
         <div>
-          <label class="label">Author Allowlist <span class="text-gray-500">(comma-sep, empty=all)</span></label>
-          <input class="input" x-model="newTargetForm.authorAllowlist" placeholder="alice,bob" />
+          <label class="inp-label">Author Allowlist <span class="text-muted">(comma-sep, empty=all)</span></label>
+          <input class="inp" x-model="newTargetForm.authorAllowlist" placeholder="alice,bob" />
         </div>
         <div>
-          <label class="label">Skip Authors <span class="text-gray-500">(bots, CI)</span></label>
-          <input class="input" x-model="newTargetForm.skipAuthors" placeholder="ci-bot,dependabot" />
+          <label class="inp-label">Skip Authors <span class="text-muted">(bots, CI)</span></label>
+          <input class="inp" x-model="newTargetForm.skipAuthors" placeholder="ci-bot,dependabot" />
         </div>
         <div>
-          <label class="label">Cooldown override <span class="text-gray-500">(min, empty=global)</span></label>
-          <input class="input" type="number" min="0" x-model.number="newTargetForm.cooldownMinutes"
-            placeholder="inherit global" />
+          <label class="inp-label">Cooldown override <span class="text-muted">(min)</span></label>
+          <input class="inp" type="number" min="0" x-model.number="newTargetForm.cooldownMinutes" placeholder="inherit global" />
         </div>
         <div>
-          <label class="label">Max files override <span class="text-gray-500">(empty=global)</span></label>
-          <input class="input" type="number" min="1" x-model.number="newTargetForm.maxFiles"
-            placeholder="inherit global" />
+          <label class="inp-label">Max files override</label>
+          <input class="inp" type="number" min="1" x-model.number="newTargetForm.maxFiles" placeholder="inherit global" />
+        </div>
+        <div style="grid-column:span 2;">
+          <label class="inp-label">File exclusions <span class="text-muted">(one per line)</span></label>
+          <textarea class="inp mono" rows="3" x-model="newTargetForm.fileExclude"
+            placeholder="src/generated/**&#10;*.proto"></textarea>
         </div>
       </div>
-      <div class="mt-2">
-        <label class="label">File exclusions <span class="text-gray-500">(one per line, appended to global)</span></label>
-        <textarea class="input font-mono text-xs" rows="3" x-model="newTargetForm.fileExclude"
-          placeholder="src/generated/**&#10;*.proto"></textarea>
-      </div>
-      <div class="flex gap-2 pt-1">
-        <button class="btn btn-primary text-sm" @click="addTarget()">Save</button>
-        <button class="btn btn-ghost text-sm" @click="showAddTargetModal = false">Cancel</button>
+      <div style="display:flex; gap:8px; margin-top:14px;">
+        <button class="btn btn-primary btn-sm" @click="addTarget()">Save</button>
+        <button class="btn btn-ghost btn-sm" @click="showAddTargetModal=false">Cancel</button>
       </div>
     </div>
 
-    <!-- Targets table -->
-    <div class="card p-0 overflow-hidden">
-      <table class="w-full text-sm">
-        <thead class="border-b border-gray-700">
-          <tr class="text-left text-xs text-gray-400">
-            <th class="px-4 py-2">Type</th>
-            <th class="px-4 py-2">ID</th>
-            <th class="px-4 py-2">Branch Pattern</th>
-            <th class="px-4 py-2">Options</th>
-            <th class="px-4 py-2">Authors</th>
-            <th class="px-4 py-2">Rules</th>
-            <th class="px-4 py-2"></th>
+    <div class="card" style="padding:0; overflow:hidden;">
+      <table class="tbl">
+        <thead>
+          <tr>
+            <th>Type</th><th>ID</th><th>Branch Pattern</th>
+            <th>Options</th><th>Authors</th><th>Rules</th><th></th>
           </tr>
         </thead>
         <tbody>
           <template x-for="t in targetsList" :key="t._key">
-            <tr class="border-b border-gray-700/50 hover:bg-gray-700/30">
-              <td class="px-4 py-2">
-                <span class="badge-ok" x-text="t.type"></span>
+            <tr>
+              <td><span class="badge badge-violet" x-text="t.type"></span></td>
+              <td><span class="mono" style="font-size:.78rem;" x-text="t.id || '—'"></span></td>
+              <td><span class="mono" style="font-size:.78rem;" x-text="t.branches?.pattern || '*'"></span></td>
+              <td>
+                <span x-show="t.branches?.protected_only" class="badge badge-blue" style="margin-right:4px;">🔒 protected</span>
+                <span x-show="t.auto_approve" class="badge badge-green">✓ auto-approve</span>
               </td>
-              <td class="px-4 py-2 font-mono text-xs" x-text="t.id || '—'"></td>
-              <td class="px-4 py-2 font-mono text-xs" x-text="t.branches?.pattern || '*'"></td>
-              <td class="px-4 py-2 text-xs">
-                <span x-show="t.branches?.protected_only" class="badge-err mr-1">🔒 protected</span>
-                <span x-show="t.auto_approve" class="badge-ok">✓ auto-approve</span>
+              <td style="font-size:.78rem; color:var(--text-3);">
+                <span x-show="t.skip_authors?.length" x-text="'skip: '+t.skip_authors.join(', ')"></span>
+                <span x-show="t.author_allowlist?.length" x-text="'only: '+t.author_allowlist.join(', ')"></span>
+                <span x-show="!t.skip_authors?.length && !t.author_allowlist?.length" style="color:var(--border-2);">all authors</span>
               </td>
-              <td class="px-4 py-2 text-xs text-gray-400">
-                <span x-show="t.skip_authors?.length" x-text="'skip: ' + t.skip_authors.join(', ')"></span>
-                <span x-show="t.author_allowlist?.length" x-text="'only: ' + t.author_allowlist.join(', ')"></span>
-                <span x-show="!t.skip_authors?.length && !t.author_allowlist?.length" class="text-gray-600">all authors</span>
+              <td style="font-size:.75rem; color:var(--text-3);">
+                <div x-show="t.review_cooldown_minutes != null" x-text="'⏱ '+t.review_cooldown_minutes+'m'"></div>
+                <div x-show="t.max_files_per_review != null" x-text="'📄 max '+t.max_files_per_review"></div>
+                <div x-show="t.file_exclude?.length" x-text="'🚫 '+t.file_exclude.length+' patterns'"></div>
               </td>
-              <td class="px-4 py-2 text-xs text-gray-400 space-y-0.5">
-                <div x-show="t.review_cooldown_minutes != null" x-text="'⏱ ' + t.review_cooldown_minutes + 'm cooldown'"></div>
-                <div x-show="t.max_files_per_review != null" x-text="'📄 max ' + t.max_files_per_review + ' files'"></div>
-                <div x-show="t.file_exclude?.length" x-text="'🚫 ' + t.file_exclude.length + ' excl. pattern(s)'"></div>
-                <span x-show="!t.review_cooldown_minutes && !t.max_files_per_review && !t.file_exclude?.length" class="text-gray-600">—</span>
-              </td>
-              <td class="px-4 py-2">
-                <button class="text-red-400 hover:text-red-300 text-xs"
-                  @click="deleteTarget(t._key)">Delete</button>
-              </td>
+              <td><button class="btn btn-danger btn-sm" @click="deleteTarget(t._key)">Delete</button></td>
             </tr>
           </template>
-          <tr x-show="targetsList.length === 0">
-            <td colspan="6" class="px-4 py-8 text-center text-gray-500 text-sm">
-              No review targets configured — all MRs will be reviewed.
+          <tr x-show="targetsList.length===0">
+            <td colspan="7" style="text-align:center; color:var(--text-3); padding:32px 16px; font-size:.84rem;">
+              No review targets — all MRs will be reviewed.
             </td>
           </tr>
         </tbody>
@@ -796,213 +1172,248 @@
     </div>
   </div>
 
-  <!-- ── REVIEWS ──────────────────────────────────────────────────── -->
+  <!-- ───────────────── REVIEWS ───────────────── -->
   <div x-show="activeTab === 'reviews'">
-    <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
-      <h2 class="text-lg font-semibold">Review History</h2>
-      <div class="flex gap-2 flex-wrap">
-        <input class="input max-w-[180px]" x-model="reviewFilter.project_id"
-          placeholder="Project ID..." @change="loadReviews()" />
-        <select class="input max-w-[140px]" x-model="reviewFilter.status" @change="loadReviews()">
+    <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; margin-bottom:16px;">
+      <div class="section-title" style="margin-bottom:0;">Review History</div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <input class="inp" style="width:160px;" x-model="reviewFilter.project_id"
+          placeholder="Project ID…" @change="loadReviews()" />
+        <select class="inp" style="width:140px;" x-model="reviewFilter.status" @change="loadReviews()">
           <option value="">All statuses</option>
           <option value="posted">posted</option>
           <option value="skipped">skipped</option>
           <option value="error">error</option>
           <option value="dry_run">dry_run</option>
         </select>
-        <button class="btn btn-ghost text-xs" @click="loadReviews()">↻ Refresh</button>
+        <button class="btn btn-ghost btn-sm" @click="loadReviews()">↻ Refresh</button>
       </div>
     </div>
 
-    <!-- Stats row -->
-    <div class="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-4">
-      <template x-for="[label, key, color] in [
-          ['Total',         'total',         'text-gray-200'],
-          ['Posted',        'posted',        'text-green-400'],
-          ['Skipped',       'skipped',       'text-yellow-400'],
-          ['Errors',        'errors',        'text-red-400'],
-          ['Auto-approved', 'auto_approved', 'text-indigo-400']]" :key="key">
-        <div class="card text-center py-3">
-          <div class="text-2xl font-bold" :class="color" x-text="reviewStats[key] ?? 0"></div>
-          <div class="text-xs text-gray-400 mt-0.5" x-text="label"></div>
+    <!-- Stats -->
+    <div style="display:grid; grid-template-columns:repeat(5,1fr); gap:10px; margin-bottom:16px;">
+      <template x-for="[lbl, key, color] in [
+          ['Total',         'total',         'var(--text-1)'],
+          ['Posted',        'posted',        'var(--green)'],
+          ['Skipped',       'skipped',       'var(--yellow)'],
+          ['Errors',        'errors',        'var(--red)'],
+          ['Auto-approved', 'auto_approved', 'var(--accent-2)']]" :key="key">
+        <div class="card" style="text-align:center; padding:14px 8px;">
+          <div class="stat-num" style="font-size:1.5rem;" :style="'color:'+color" x-text="reviewStats[key] ?? 0"></div>
+          <div class="stat-lbl" x-text="lbl"></div>
         </div>
       </template>
     </div>
 
     <!-- Table -->
-    <div class="card p-0 overflow-hidden">
-      <table class="w-full text-sm">
-        <thead class="border-b border-gray-700">
-          <tr class="text-left text-xs text-gray-400">
-            <th class="px-4 py-2">Time</th>
-            <th class="px-4 py-2">Project</th>
-            <th class="px-4 py-2">MR</th>
-            <th class="px-4 py-2">Author</th>
-            <th class="px-4 py-2">Status</th>
-            <th class="px-4 py-2">Branch</th>
-            <th class="px-4 py-2 text-center">Inline</th>
-            <th class="px-4 py-2"></th>
+    <div class="card" style="padding:0; overflow:hidden;">
+      <table class="tbl">
+        <thead>
+          <tr>
+            <th>Time</th><th>Project</th><th>MR</th><th>Author</th>
+            <th>Status</th><th>Branch</th><th style="text-align:center;">Risk</th>
+            <th style="text-align:center;">Inline</th><th></th>
           </tr>
         </thead>
         <tbody>
           <template x-for="r in reviews.items" :key="r.id">
-            <tr class="border-b border-gray-700/50 hover:bg-gray-700/30 transition-colors">
-              <td class="px-4 py-2 text-xs text-gray-400 whitespace-nowrap"
-                x-text="r.created_at?.substring(0,16).replace('T',' ')"></td>
-              <td class="px-4 py-2 font-mono text-xs" x-text="r.project_id"></td>
-              <td class="px-4 py-2">
-                <a :href="r.mr_url" target="_blank"
-                  class="text-indigo-400 hover:underline text-xs"
-                  x-text="'MR!' + r.mr_iid + ' ' + (r.mr_title?.substring(0,40) || '')">
-                </a>
+            <tr>
+              <td style="font-size:.75rem; white-space:nowrap;" x-text="r.created_at?.substring(0,16).replace('T',' ')"></td>
+              <td><span class="mono" style="font-size:.78rem;" x-text="r.project_id"></span></td>
+              <td>
+                <a :href="r.mr_url" target="_blank" style="font-size:.8rem; white-space:nowrap;"
+                  x-text="'MR!'+r.mr_iid+' '+(r.mr_title?.substring(0,36)||'')"></a>
               </td>
-              <td class="px-4 py-2 text-xs" x-text="r.author"></td>
-              <td class="px-4 py-2">
-                <span class="text-xs px-2 py-0.5 rounded-full"
+              <td style="font-size:.8rem;" x-text="r.author"></td>
+              <td>
+                <span class="badge"
                   :class="{
-                    'bg-green-900 text-green-300':  r.status === 'posted',
-                    'bg-yellow-900 text-yellow-300': r.status === 'skipped',
-                    'bg-red-900 text-red-300':      r.status === 'error',
-                    'bg-gray-700 text-gray-300':    r.status === 'dry_run',
+                    'badge-green':  r.status==='posted',
+                    'badge-yellow': r.status==='skipped',
+                    'badge-red':    r.status==='error',
+                    'badge-gray':   r.status==='dry_run',
+                    'badge-blue':   r.status==='processing',
                   }"
-                  x-text="r.status + (r.auto_approved ? ' ✓approve' : '')"></span>
+                  x-text="r.status+(r.auto_approved?' ✓':'')"></span>
               </td>
-              <td class="px-4 py-2 text-xs text-gray-400 font-mono"
+              <td class="mono" style="font-size:.73rem; color:var(--text-3);"
                 x-text="r.source_branch + ' → ' + r.target_branch"></td>
-              <td class="px-4 py-2 text-center">
-                <span x-show="r.inline_count > 0"
-                  class="text-xs px-1.5 py-0.5 rounded bg-indigo-900/60 text-indigo-300"
-                  :title="r.inline_count + ' inline annotation(s)'"
-                  x-text="'💬 ' + r.inline_count"></span>
+              <!-- Risk score -->
+              <td style="text-align:center;">
+                <template x-if="r.risk_score > 0">
+                  <div style="display:flex; flex-direction:column; align-items:center; gap:3px;">
+                    <div class="risk-bar">
+                      <div class="risk-bar-fill"
+                        :style="'width:'+r.risk_score+'%;background:'+(r.risk_score>=70?'var(--red)':r.risk_score>=40?'var(--yellow)':'var(--green)')"></div>
+                    </div>
+                    <span style="font-size:.7rem; font-weight:600;"
+                      :style="'color:'+(r.risk_score>=70?'var(--red)':r.risk_score>=40?'var(--yellow)':'var(--green)')"
+                      x-text="r.risk_score"></span>
+                  </div>
+                </template>
+                <span x-show="!r.risk_score" style="color:var(--border-2);">—</span>
               </td>
-              <td class="px-4 py-2 flex gap-2">
-                <button class="text-indigo-400 hover:text-indigo-300 text-xs"
-                  @click="openReview(r)">View</button>
-                <button x-show="r.status === 'error' || r.status === 'skipped'"
-                  class="text-yellow-400 hover:text-yellow-300 text-xs"
-                  @click="retryReview(r.id)" title="Re-queue this review">↺ Retry</button>
+              <!-- Inline count -->
+              <td style="text-align:center;">
+                <span x-show="r.inline_count > 0"
+                  class="badge badge-violet"
+                  x-text="'💬 '+r.inline_count"></span>
+              </td>
+              <td>
+                <div style="display:flex; gap:6px;">
+                  <button class="btn btn-ghost btn-sm" @click="openReview(r)">View</button>
+                  <button x-show="r.status==='error' || r.status==='skipped'"
+                    class="btn btn-ghost btn-sm" style="color:var(--yellow);"
+                    @click="retryReview(r.id)">↺</button>
+                </div>
               </td>
             </tr>
           </template>
-          <tr x-show="reviews.items?.length === 0">
-            <td colspan="7" class="px-4 py-8 text-center text-gray-500 text-sm">No reviews yet</td>
+          <tr x-show="reviews.items?.length===0">
+            <td colspan="9" style="text-align:center; color:var(--text-3); padding:36px; font-size:.84rem;">No reviews yet</td>
           </tr>
         </tbody>
       </table>
     </div>
 
     <!-- Pagination -->
-    <div class="flex items-center justify-between mt-3 text-sm" x-show="reviews.total > 0">
-      <span class="text-gray-400">
-        Showing <span x-text="reviews.items?.length"></span> of <span x-text="reviews.total"></span>
-      </span>
-      <div class="flex gap-2">
-        <button class="btn btn-ghost text-xs" :disabled="reviewPage === 0"
-          @click="reviewPage--; loadReviews()">← Prev</button>
-        <span class="self-center text-xs text-gray-400" x-text="'Page ' + (reviewPage + 1)"></span>
-        <button class="btn btn-ghost text-xs"
-          :disabled="(reviewPage + 1) * reviewPageSize >= reviews.total"
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-top:12px; font-size:.82rem;" x-show="reviews.total > 0">
+      <span style="color:var(--text-3);">Showing <span style="color:var(--text-2);" x-text="reviews.items?.length"></span> of <span style="color:var(--text-2);" x-text="reviews.total"></span></span>
+      <div style="display:flex; gap:6px; align-items:center;">
+        <button class="btn btn-ghost btn-sm" :disabled="reviewPage===0" @click="reviewPage--; loadReviews()">← Prev</button>
+        <span style="color:var(--text-3);" x-text="'Page '+(reviewPage+1)"></span>
+        <button class="btn btn-ghost btn-sm"
+          :disabled="(reviewPage+1)*reviewPageSize >= reviews.total"
           @click="reviewPage++; loadReviews()">Next →</button>
       </div>
     </div>
   </div>
 
-  <!-- Review detail modal -->
-  <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
-    x-show="selectedReview" x-cloak @click.self="selectedReview = null">
-    <div class="bg-gray-800 rounded-xl border border-gray-600 w-full max-w-3xl max-h-[85vh] flex flex-col mx-4">
-      <div class="flex items-center justify-between px-5 py-3 border-b border-gray-700">
-        <div>
-          <span class="font-semibold" x-text="'MR!' + selectedReview?.mr_iid"></span>
-          <span class="text-gray-400 text-sm ml-2" x-text="selectedReview?.mr_title"></span>
-        </div>
-        <div class="flex items-center gap-3">
-          <a :href="selectedReview?.mr_url" target="_blank"
-            class="text-indigo-400 hover:underline text-xs">Open in GitLab ↗</a>
-          <button @click="selectedReview = null" class="text-gray-400 hover:text-gray-200 text-xl leading-none">×</button>
-        </div>
-      </div>
-      <div class="overflow-y-auto p-5 flex-1">
-        <div class="flex gap-3 flex-wrap text-xs text-gray-400 mb-4">
-          <span>Project: <span class="text-gray-200" x-text="selectedReview?.project_id"></span></span>
-          <span>Author: <span class="text-gray-200" x-text="selectedReview?.author"></span></span>
-          <span>Branch: <span class="font-mono text-gray-200"
-            x-text="selectedReview?.source_branch + ' → ' + selectedReview?.target_branch"></span></span>
-          <span>Prompts: <span class="text-gray-200" x-text="selectedReview?.prompt_names?.join(', ')"></span></span>
-          <span x-show="selectedReview?.auto_approved" class="badge-ok">auto-approved</span>
-        </div>
-        <pre class="text-sm text-gray-200 whitespace-pre-wrap leading-relaxed font-sans"
-          x-text="selectedReview?.review_text || selectedReview?.skip_reason || '(empty)'"></pre>
-      </div>
-    </div>
-  </div>
-
-  <!-- ── LOGS ───────────────────────────────────────────────────── -->
+  <!-- ───────────────── LOGS ───────────────── -->
   <div x-show="activeTab === 'logs'">
-    <div class="flex items-center justify-between mb-3">
-      <h2 class="text-lg font-semibold">Live Logs</h2>
-      <div class="flex gap-2 items-center">
-        <select class="input max-w-[120px]" x-model="logFilter">
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; flex-wrap:wrap; gap:8px;">
+      <div class="section-title" style="margin-bottom:0;">Live Logs</div>
+      <div style="display:flex; gap:8px; align-items:center;">
+        <select class="inp" style="width:120px;" x-model="logFilter">
           <option value="">All levels</option>
           <option value="ERROR">ERROR</option>
           <option value="WARNING">WARNING</option>
           <option value="INFO">INFO</option>
           <option value="DEBUG">DEBUG</option>
         </select>
-        <label class="flex items-center gap-1 text-sm">
-          <input type="checkbox" x-model="logFollow" class="rounded" />
-          Follow
+        <label class="toggle">
+          <input type="checkbox" x-model="logFollow" />
+          <div class="toggle-track"><div class="toggle-thumb"></div></div>
+          <span class="toggle-label" style="font-size:.8rem;">Follow</span>
         </label>
-        <button class="btn btn-ghost text-xs" @click="logLines = []">Clear</button>
-        <span class="text-xs" :class="wsConnected ? 'text-green-400' : 'text-red-400'"
-          x-text="wsConnected ? '● Live' : '○ Disconnected'"></span>
+        <button class="btn btn-ghost btn-sm" @click="logLines=[]">Clear</button>
+        <div class="topbar-stat">
+          <span class="status-dot" :class="wsConnected ? 'dot-green' : 'dot-red'"></span>
+          <span x-text="wsConnected ? 'Live' : 'Disconnected'"></span>
+        </div>
       </div>
     </div>
 
-    <div id="log-box" class="rounded-xl p-3" x-ref="logBox">
+    <div id="log-box" x-ref="logBox">
       <template x-for="(line, idx) in filteredLogs" :key="idx">
-        <div class="log-line" :class="'log-' + line.level">
-          <span class="text-gray-600" x-text="line.ts?.substring(11,19)"></span>
-          <span class="font-bold ml-2 w-8 inline-block" x-text="line.level?.substring(0,1)"></span>
-          <span class="text-gray-500 ml-1" x-text="line.logger"></span>
-          <span class="ml-2" x-text="line.msg"></span>
+        <div class="log-line" :class="'lvl-'+(line.level?.substring(0,1)||'I')">
+          <span class="log-ts" x-text="line.ts?.substring(11,19)"></span>
+          <span class="log-lvl" x-text="line.level?.substring(0,1)"></span>
+          <span class="log-src" x-text="line.logger"></span>
+          <span class="log-msg" x-text="line.msg"></span>
         </div>
       </template>
-      <div x-show="filteredLogs.length === 0" class="text-gray-600 text-sm p-4">No log lines yet...</div>
+      <div x-show="filteredLogs.length===0" style="color:var(--text-3); font-size:.82rem; padding:24px; text-align:center;">
+        No log lines yet…
+      </div>
     </div>
   </div>
 
 </main>
 
-<!-- Toast -->
-<div class="fixed bottom-4 right-4 z-50" x-show="toast.show" x-transition>
-  <div class="px-4 py-3 rounded-xl text-sm font-medium shadow-lg"
-    :class="toast.type === 'error' ? 'bg-red-800 text-red-100' : 'bg-green-800 text-green-100'"
+<!-- ═══════════════════════════════════════════════════════════════
+     REVIEW DETAIL MODAL
+═══════════════════════════════════════════════════════════════════ -->
+<div class="modal-overlay" x-show="selectedReview" x-cloak @click.self="selectedReview=null">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div>
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+          <span style="font-weight:700; font-size:.95rem;" x-text="'MR!'+selectedReview?.mr_iid"></span>
+          <span style="color:var(--text-2); font-size:.85rem;" x-text="selectedReview?.mr_title"></span>
+        </div>
+        <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:8px; font-size:.75rem; color:var(--text-3);">
+          <span>Project: <span style="color:var(--text-2);" x-text="selectedReview?.project_id"></span></span>
+          <span>Author: <span style="color:var(--text-2);" x-text="selectedReview?.author"></span></span>
+          <span class="mono">Branch: <span style="color:var(--text-2);"
+            x-text="selectedReview?.source_branch + ' → ' + selectedReview?.target_branch"></span></span>
+          <template x-if="selectedReview?.risk_score > 0">
+            <span>Risk:
+              <span style="font-weight:700;"
+                :style="'color:'+(selectedReview.risk_score>=70?'var(--red)':selectedReview.risk_score>=40?'var(--yellow)':'var(--green)')"
+                x-text="selectedReview.risk_score+'/100'"></span>
+            </span>
+          </template>
+          <span x-show="selectedReview?.auto_approved" class="badge badge-green">auto-approved</span>
+        </div>
+      </div>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <a :href="selectedReview?.mr_url" target="_blank"
+          style="font-size:.78rem;" class="btn btn-ghost btn-sm">Open in GitLab ↗</a>
+        <button class="modal-close" @click="selectedReview=null">×</button>
+      </div>
+    </div>
+    <div class="modal-body">
+      <pre class="review-body" x-text="selectedReview?.review_text || selectedReview?.skip_reason || '(empty)'"></pre>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     TOAST
+═══════════════════════════════════════════════════════════════════ -->
+<div style="position:fixed; bottom:20px; right:20px; z-index:60;" x-show="toast.show" x-transition>
+  <div style="padding:12px 18px; border-radius:10px; font-size:.84rem; font-weight:500; box-shadow:0 8px 24px rgba(0,0,0,.5);"
+    :style="toast.type==='error'
+      ? 'background:var(--red-bg); color:var(--red); border:1px solid rgba(248,81,73,.3);'
+      : 'background:var(--green-bg); color:var(--green); border:1px solid rgba(63,185,80,.3);'"
     x-text="toast.message"></div>
 </div>
 
+<!-- ═══════════════════════════════════════════════════════════════
+     SCRIPT (unchanged logic)
+═══════════════════════════════════════════════════════════════════ -->
 <script>
 function app() {
   return {
-    // State
     activeTab: 'dashboard',
     tabs: [
-      { id: 'dashboard', label: '📊 Dashboard' },
-      { id: 'providers', label: '🔌 Providers' },
-      { id: 'prompts',   label: '📝 Prompts' },
-      { id: 'gitlab',    label: '🦊 GitLab' },
+      { id: 'dashboard',     label: '📊 Dashboard' },
+      { id: 'providers',     label: '🔌 Providers' },
+      { id: 'prompts',       label: '📝 Prompts' },
+      { id: 'gitlab',        label: '🦊 GitLab' },
       { id: 'queue',         label: '⚡ Queue' },
-      { id: 'notifications', label: '🔔 Notifications' },
+      { id: 'notifications', label: '🔔 Notify' },
       { id: 'targets',       label: '🎯 Targets' },
-      { id: 'reviews',   label: '📋 Reviews' },
-      { id: 'logs',      label: '📜 Logs' },
+      { id: 'reviews',       label: '📋 Reviews' },
+      { id: 'logs',          label: '📜 Logs' },
     ],
 
-    // Config
-    config: { providers: [], model: {}, gitlab: { auth_type: 'token', tls_verify: true }, review_targets: [], queue: { backend: 'memory', max_concurrent: 3, max_queue_size: 100 }, prompts: { system: [] }, notifications: { enabled: false, format: 'generic', webhook_url: '', telegram_bot_token: '', telegram_chat_id: '', on_posted: true, on_error: false, on_skipped: false }, max_files_per_review: 50, review_cooldown_minutes: 0, file_exclude: [] },
+    config: {
+      providers: [], model: {},
+      gitlab: { auth_type: 'token', tls_verify: true },
+      review_targets: [],
+      queue: { backend: 'memory', max_concurrent: 3, max_queue_size: 100 },
+      prompts: { system: [] },
+      notifications: { enabled: false, format: 'generic', webhook_url: '',
+        telegram_bot_token: '', telegram_chat_id: '',
+        on_posted: true, on_error: false, on_skipped: false },
+      max_files_per_review: 50,
+      review_cooldown_minutes: 0,
+      file_exclude: [],
+    },
     activeProvider: null,
 
-    // Provider tab
     showAddProvider: false,
     newProvider: { id: '', name: '', type: 'ollama', url: 'http://localhost:11434', api_key: '', active: true },
     providerError: '',
@@ -1011,11 +1422,9 @@ function app() {
     modelInfo: {},
     modelSaved: false,
 
-    // Prompts tab
     promptToAdd: '',
     promptSaved: false,
 
-    // Targets tab
     targetsList: [],
     showAddTargetModal: false,
     newTargetForm: {
@@ -1024,28 +1433,21 @@ function app() {
       cooldownMinutes: '', fileExclude: '', maxFiles: '',
     },
 
-    // GitLab tab
     gitlabTestResult: null,
     showAddTarget: false,
     newTarget: { type: 'all', id: '', branchPattern: '*', protectedOnly: false, autoApprove: false, groupSearch: '', projectSearch: '' },
     groups: [],
     projects: [],
 
-    // Queue tab
     queue: { pending: 0, active: 0, done: 0, errors: 0 },
     queueSaved: false,
 
-    // Notifications tab
     notificationSaved: false,
     notificationTestResult: null,
-
-    // Review defaults
     reviewDefaultsSaved: false,
 
-    // Dashboard
     dashboardRecent: [],
 
-    // Reviews tab
     reviews: { items: [], total: 0 },
     reviewStats: {},
     reviewFilter: { project_id: '', status: '' },
@@ -1053,24 +1455,20 @@ function app() {
     reviewPageSize: 20,
     selectedReview: null,
 
-    // Logs tab
     logLines: [],
     logFilter: '',
     logFollow: true,
     wsConnected: false,
     ws: null,
 
-    // Toast
     toast: { show: false, message: '', type: 'success' },
 
-    // ── Init ────────────────────────────────────────────────────────
     async init() {
       await this.loadConfig();
       this.startQueuePolling();
       this.connectLogSocket();
       await this.loadReviewStats();
       await this.loadDashboardRecent();
-      // Reload reviews when switching to the tab
       this.$watch('activeTab', (tab) => {
         if (tab === 'reviews') { this.loadReviews(); this.loadReviewStats(); }
         if (tab === 'targets') { this.loadTargets(); }
@@ -1082,19 +1480,13 @@ function app() {
         const r = await fetch('/api/v1/config');
         this.config = await r.json();
         this.activeProvider = (this.config.providers ?? []).find(p => p.active && p.id === this.config.model?.provider_id)
-          || (this.config.providers ?? []).find(p => p.active)
-          || null;
-      } catch (e) {
-        this.showToast('Failed to load config: ' + e, 'error');
-      }
+          || (this.config.providers ?? []).find(p => p.active) || null;
+      } catch (e) { this.showToast('Failed to load config: ' + e, 'error'); }
     },
 
-    // ── Providers ───────────────────────────────────────────────────
     async saveProvider() {
       this.providerError = '';
-      if (!this.newProvider.id || !this.newProvider.url) {
-        this.providerError = 'ID and URL are required'; return;
-      }
+      if (!this.newProvider.id || !this.newProvider.url) { this.providerError = 'ID and URL are required'; return; }
       try {
         const r = await fetch('/api/v1/providers', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -1127,18 +1519,11 @@ function app() {
     },
 
     async selectModel(prov, model) {
-      this.config.model = {
-        ...this.config.model,
-        provider_id: prov.id,
-        name: model.id,
-      };
-      // Fetch model info for context length hint
+      this.config.model = { ...this.config.model, provider_id: prov.id, name: model.id };
       const r = await fetch(`/api/v1/providers/${prov.id}/models/${encodeURIComponent(model.id)}/info`);
       const info = await r.json();
       this.modelInfo[model.id] = info;
-      if (info.context_length && !this.config.model.context_size) {
-        this.config.model.context_size = null; // keep null, show hint
-      }
+      if (info.context_length && !this.config.model.context_size) this.config.model.context_size = null;
     },
 
     async saveModelSettings() {
@@ -1147,17 +1532,14 @@ function app() {
       setTimeout(() => this.modelSaved = false, 2000);
     },
 
-    // ── Prompts ─────────────────────────────────────────────────────
     addPrompt() {
       if (!this.promptToAdd) return;
-      if (!this.config.prompts.system.includes(this.promptToAdd)) {
-        this.config.prompts.system.push(this.promptToAdd);
-      }
+      if (!this.config.prompts.system.includes(this.promptToAdd)) this.config.prompts.system.push(this.promptToAdd);
       this.promptToAdd = '';
     },
 
     removePrompt(idx) {
-      if (idx === 0) return; // base is always first
+      if (idx === 0) return;
       this.config.prompts.system.splice(idx, 1);
     },
 
@@ -1168,7 +1550,6 @@ function app() {
       this.showToast('Prompt config saved');
     },
 
-    // ── GitLab ──────────────────────────────────────────────────────
     async saveGitLabConfig() {
       await this.patchConfig({ gitlab: this.config.gitlab });
       this.showToast('GitLab config saved');
@@ -1194,11 +1575,9 @@ function app() {
 
     async saveTarget() {
       const target = {
-        type: this.newTarget.type,
-        id: this.newTarget.id,
+        type: this.newTarget.type, id: this.newTarget.id,
         branches: { pattern: this.newTarget.branchPattern, protected_only: this.newTarget.protectedOnly },
-        auto_approve: this.newTarget.autoApprove,
-        prompts: { system: [] },
+        auto_approve: this.newTarget.autoApprove, prompts: { system: [] },
       };
       if (!this.config.review_targets) this.config.review_targets = [];
       this.config.review_targets.push(target);
@@ -1213,7 +1592,6 @@ function app() {
       await this.patchConfig({ review_targets: this.config.review_targets });
     },
 
-    // ── Queue ───────────────────────────────────────────────────────
     async saveQueueConfig() {
       await this.patchConfig({ queue: this.config.queue });
       this.queueSaved = true;
@@ -1221,7 +1599,6 @@ function app() {
       this.showToast('Queue config saved');
     },
 
-    // ── Notifications ───────────────────────────────────────────────
     async saveNotifications() {
       await this.patchConfig({ notifications: this.config.notifications });
       this.notificationSaved = true;
@@ -1245,9 +1622,7 @@ function app() {
       try {
         const r = await fetch('/api/v1/notifications/test', { method: 'POST' });
         this.notificationTestResult = r.ok ? 'ok' : 'error';
-      } catch (_) {
-        this.notificationTestResult = 'error';
-      }
+      } catch (_) { this.notificationTestResult = 'error'; }
       setTimeout(() => this.notificationTestResult = null, 4000);
     },
 
@@ -1259,14 +1634,10 @@ function app() {
 
     startQueuePolling() {
       setInterval(async () => {
-        try {
-          const r = await fetch('/api/v1/queue');
-          this.queue = await r.json();
-        } catch (_) {}
+        try { const r = await fetch('/api/v1/queue'); this.queue = await r.json(); } catch (_) {}
       }, 2000);
     },
 
-    // ── Logs ────────────────────────────────────────────────────────
     get filteredLogs() {
       if (!this.logFilter) return this.logLines;
       return this.logLines.filter(l => l.level === this.logFilter);
@@ -1274,14 +1645,9 @@ function app() {
 
     connectLogSocket() {
       const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-      const wsUrl = `${proto}://${location.host}/ws/logs`;
-      this.ws = new WebSocket(wsUrl);
-
-      this.ws.onopen = () => { this.wsConnected = true; };
-      this.ws.onclose = () => {
-        this.wsConnected = false;
-        setTimeout(() => this.connectLogSocket(), 3000);
-      };
+      this.ws = new WebSocket(`${proto}://${location.host}/ws/logs`);
+      this.ws.onopen  = () => { this.wsConnected = true; };
+      this.ws.onclose = () => { this.wsConnected = false; setTimeout(() => this.connectLogSocket(), 3000); };
       this.ws.onmessage = (evt) => {
         try {
           const data = JSON.parse(evt.data);
@@ -1289,134 +1655,85 @@ function app() {
           this.logLines.push(data);
           if (this.logLines.length > 2000) this.logLines.shift();
           if (this.logFollow) {
-            this.$nextTick(() => {
-              const box = document.getElementById('log-box');
-              if (box) box.scrollTop = box.scrollHeight;
-            });
+            this.$nextTick(() => { const b = document.getElementById('log-box'); if (b) b.scrollTop = b.scrollHeight; });
           }
         } catch (_) {}
       };
     },
 
-    // ── Reviews ─────────────────────────────────────────────────────
     async loadDashboardRecent() {
-      try {
-        const r = await fetch('/api/v1/reviews/recent?limit=8');
-        this.dashboardRecent = await r.json();
-      } catch (_) {}
+      try { const r = await fetch('/api/v1/reviews/recent?limit=8'); this.dashboardRecent = await r.json(); } catch (_) {}
     },
 
     async loadReviews() {
-      const params = new URLSearchParams({
-        limit: this.reviewPageSize,
-        offset: this.reviewPage * this.reviewPageSize,
-      });
+      const params = new URLSearchParams({ limit: this.reviewPageSize, offset: this.reviewPage * this.reviewPageSize });
       if (this.reviewFilter.project_id) params.set('project_id', this.reviewFilter.project_id);
       if (this.reviewFilter.status) params.set('status', this.reviewFilter.status);
-      try {
-        const r = await fetch(`/api/v1/reviews?${params}`);
-        this.reviews = await r.json();
-      } catch (e) {
-        this.showToast('Failed to load reviews: ' + e, 'error');
-      }
+      try { const r = await fetch(`/api/v1/reviews?${params}`); this.reviews = await r.json(); }
+      catch (e) { this.showToast('Failed to load reviews: ' + e, 'error'); }
     },
 
     async loadReviewStats() {
-      try {
-        const r = await fetch('/api/v1/reviews/stats');
-        this.reviewStats = await r.json();
-      } catch (_) {}
+      try { const r = await fetch('/api/v1/reviews/stats'); this.reviewStats = await r.json(); } catch (_) {}
     },
 
     async retryReview(id) {
       try {
         const r = await fetch(`/api/v1/reviews/${id}/retry`, { method: 'POST' });
-        if (r.ok) {
-          this.showToast('Review re-queued ↺', 'success');
-          this.loadReviews();
-        } else {
-          const d = await r.json();
-          this.showToast(d.detail || 'Retry failed', 'error');
-        }
+        if (r.ok) { this.showToast('Review re-queued ↺'); this.loadReviews(); }
+        else { const d = await r.json(); this.showToast(d.detail || 'Retry failed', 'error'); }
       } catch (e) { this.showToast('Network error: ' + e, 'error'); }
     },
 
     async loadTargets() {
-      try {
-        const r = await fetch('/api/v1/targets');
-        this.targetsList = await r.json();
-      } catch (e) { this.showToast('Failed to load targets: ' + e, 'error'); }
+      try { const r = await fetch('/api/v1/targets'); this.targetsList = await r.json(); }
+      catch (e) { this.showToast('Failed to load targets: ' + e, 'error'); }
     },
 
     async addTarget() {
       const f = this.newTargetForm;
       const body = {
-        type: f.type,
-        id: f.id,
+        type: f.type, id: f.id,
         branches: { pattern: f.branchPattern || '*', protected_only: f.protectedOnly },
-        auto_approve: f.autoApprove,
-        prompts: { system: [] },
-        author_allowlist: f.authorAllowlist ? f.authorAllowlist.split(',').map(s => s.trim()).filter(Boolean) : [],
-        skip_authors: f.skipAuthors ? f.skipAuthors.split(',').map(s => s.trim()).filter(Boolean) : [],
-        file_exclude: f.fileExclude ? f.fileExclude.split('\n').map(s => s.trim()).filter(Boolean) : [],
-        ...(f.cooldownMinutes !== '' && f.cooldownMinutes !== null
-          ? { review_cooldown_minutes: Number(f.cooldownMinutes) } : {}),
-        ...(f.maxFiles !== '' && f.maxFiles !== null
-          ? { max_files_per_review: Number(f.maxFiles) } : {}),
+        auto_approve: f.autoApprove, prompts: { system: [] },
+        author_allowlist: f.authorAllowlist ? f.authorAllowlist.split(',').map(s=>s.trim()).filter(Boolean) : [],
+        skip_authors: f.skipAuthors ? f.skipAuthors.split(',').map(s=>s.trim()).filter(Boolean) : [],
+        file_exclude: f.fileExclude ? f.fileExclude.split('\n').map(s=>s.trim()).filter(Boolean) : [],
+        ...(f.cooldownMinutes !== '' && f.cooldownMinutes !== null ? { review_cooldown_minutes: Number(f.cooldownMinutes) } : {}),
+        ...(f.maxFiles !== '' && f.maxFiles !== null ? { max_files_per_review: Number(f.maxFiles) } : {}),
       };
       const r = await fetch('/api/v1/targets', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
       });
       if (r.ok) {
-        this.showToast('Target added ✓', 'success');
+        this.showToast('Target added ✓');
         this.showAddTargetModal = false;
-        this.newTargetForm = {
-          type: 'project', id: '', branchPattern: '*', protectedOnly: false,
-          autoApprove: false, authorAllowlist: '', skipAuthors: '',
-          cooldownMinutes: '', fileExclude: '', maxFiles: '',
-        };
+        this.newTargetForm = { type: 'project', id: '', branchPattern: '*', protectedOnly: false,
+          autoApprove: false, authorAllowlist: '', skipAuthors: '', cooldownMinutes: '', fileExclude: '', maxFiles: '' };
         await this.loadTargets();
-      } else {
-        const d = await r.json();
-        this.showToast(d.detail || 'Failed to add target', 'error');
-      }
+      } else { const d = await r.json(); this.showToast(d.detail || 'Failed', 'error'); }
     },
 
     async deleteTarget(key) {
       if (!confirm(`Delete target '${key}'?`)) return;
       const r = await fetch(`/api/v1/targets/${encodeURIComponent(key)}`, { method: 'DELETE' });
-      if (r.ok) {
-        this.showToast('Target deleted', 'success');
-        await this.loadTargets();
-      } else {
-        this.showToast('Failed to delete target', 'error');
-      }
+      if (r.ok) { this.showToast('Target deleted'); await this.loadTargets(); }
+      else this.showToast('Failed to delete', 'error');
     },
 
     async openReview(r) {
-      // Fetch full record (list view may have trimmed text)
-      try {
-        const resp = await fetch(`/api/v1/reviews/${r.id}`);
-        this.selectedReview = await resp.json();
-      } catch (_) {
-        this.selectedReview = r;
-      }
+      try { const resp = await fetch(`/api/v1/reviews/${r.id}`); this.selectedReview = await resp.json(); }
+      catch (_) { this.selectedReview = r; }
     },
 
-    // ── Helpers ─────────────────────────────────────────────────────
     async patchConfig(patch) {
       try {
         const r = await fetch('/api/v1/config', {
           method: 'PUT', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(patch),
         });
-        if (!r.ok) {
-          const err = await r.json();
-          this.showToast('Error: ' + JSON.stringify(err.detail), 'error');
-        }
-      } catch (e) {
-        this.showToast('Network error: ' + e, 'error');
-      }
+        if (!r.ok) { const err = await r.json(); this.showToast('Error: ' + JSON.stringify(err.detail), 'error'); }
+      } catch (e) { this.showToast('Network error: ' + e, 'error'); }
     },
 
     showToast(message, type = 'success') {
@@ -1426,6 +1743,5 @@ function app() {
   };
 }
 </script>
-
 </body>
 </html>
