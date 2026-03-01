@@ -642,17 +642,46 @@
     <!-- Provider list -->
     <div style="display:flex; flex-direction:column; gap:10px;">
       <template x-for="prov in config.providers ?? []" :key="prov.id">
-        <div class="card">
+        <div class="card" style="transition: border-color .2s;"
+          :style="prov.active ? 'border-color:var(--green);' : ''">
+
+          <!-- Header row -->
           <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-            <span class="status-dot" :class="prov.active ? 'dot-green' : 'dot-gray'"></span>
-            <span style="font-weight:600; color:var(--text-1);" x-text="prov.name"></span>
-            <span class="badge badge-gray mono" x-text="prov.type"></span>
-            <span class="mono text-muted" style="font-size:.75rem;" x-text="prov.url"></span>
-            <div style="margin-left:auto; display:flex; gap:6px;">
+            <!-- Active indicator + name -->
+            <div style="display:flex; align-items:center; gap:8px; flex:1; min-width:0;">
+              <span class="status-dot" :class="prov.active ? 'dot-green' : 'dot-gray'"></span>
+              <span style="font-weight:600;" :style="prov.active ? 'color:var(--text-1);' : 'color:var(--text-2);'" x-text="prov.name"></span>
+              <span x-show="prov.active" class="badge badge-green">active</span>
+              <span class="badge badge-gray mono" x-text="prov.type"></span>
+              <span class="mono text-muted" style="font-size:.73rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" x-text="prov.url"></span>
+            </div>
+            <!-- Actions -->
+            <div style="display:flex; gap:6px; flex-shrink:0;">
+              <button class="btn btn-sm"
+                x-show="!prov.active"
+                style="background:var(--green-bg); color:var(--green); border:1px solid rgba(63,185,80,.25);"
+                @click="setActiveProvider(prov)">
+                ✓ Set Active
+              </button>
               <button class="btn btn-ghost btn-sm" @click="testProvider(prov)">Test</button>
-              <button class="btn btn-ghost btn-sm" @click="fetchModels(prov)">Models</button>
+              <button class="btn btn-ghost btn-sm" @click="toggleModelList(prov)">
+                <span x-text="providerModels[prov.id] ? 'Hide models' : 'Models'"></span>
+              </button>
               <button class="btn btn-danger btn-sm" @click="deleteProvider(prov.id)">Delete</button>
             </div>
+          </div>
+
+          <!-- Active model info (shown when this provider is active) -->
+          <div x-show="prov.active && config.model?.name && config.model?.provider_id === prov.id"
+            style="margin-top:10px; padding:8px 12px; background:var(--surface-2); border-radius:6px; border:1px solid var(--border); display:flex; align-items:center; gap:10px;">
+            <span style="font-size:.73rem; color:var(--text-3);">Active model:</span>
+            <span class="mono" style="font-size:.82rem; color:var(--accent-2);" x-text="config.model.name"></span>
+            <span style="font-size:.73rem; color:var(--text-3);" x-show="config.model.temperature != null">
+              T=<span style="color:var(--text-2);" x-text="config.model.temperature"></span>
+            </span>
+            <span style="font-size:.73rem; color:var(--text-3);" x-show="config.model.context_size">
+              ctx=<span style="color:var(--text-2);" x-text="config.model.context_size"></span>
+            </span>
           </div>
 
           <!-- Test result -->
@@ -665,21 +694,42 @@
             </template>
           </div>
 
-          <!-- Model list -->
-          <div style="margin-top:12px;" x-show="providerModels[prov.id]?.length > 0">
-            <div class="card-label" style="margin-bottom:8px;">Available models — click to activate</div>
-            <div style="display:flex; flex-wrap:wrap; gap:6px;">
-              <template x-for="m in providerModels[prov.id] ?? []" :key="m.id">
-                <button
-                  style="font-size:.75rem; padding:4px 10px; border-radius:20px; border:1px solid; cursor:pointer; transition:all .15s;"
+          <!-- Model list (scrollable, collapsible) -->
+          <div style="margin-top:12px;" x-show="providerModels[prov.id]">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
+              <span class="card-label" style="margin-bottom:0;">
+                Models
+                <span style="color:var(--text-3); font-weight:400;" x-show="providerModels[prov.id]?.length"
+                  x-text="'('+providerModels[prov.id].length+')'"></span>
+              </span>
+              <input class="inp" style="width:200px; padding:4px 8px; font-size:.75rem;"
+                x-model="modelSearch[prov.id]" placeholder="Filter models…" />
+            </div>
+
+            <div style="max-height:220px; overflow-y:auto; border:1px solid var(--border); border-radius:8px; background:var(--bg);">
+              <template x-if="!providerModels[prov.id]?.length">
+                <div style="padding:16px; text-align:center; color:var(--text-3); font-size:.82rem;">No models found</div>
+              </template>
+              <template x-for="m in filteredModels(prov.id)" :key="m.id">
+                <div
+                  style="display:flex; align-items:center; justify-content:space-between; padding:8px 12px; cursor:pointer; transition:background .1s; border-bottom:1px solid rgba(48,54,61,.5);"
                   :style="config.model?.name===m.id && config.model?.provider_id===prov.id
-                    ? 'border-color:var(--accent);background:var(--accent-dim);color:var(--accent-2);'
-                    : 'border-color:var(--border);background:var(--surface-2);color:var(--text-2);'"
-                  @click="selectModel(prov,m)">
-                  <span x-text="m.id"></span>
-                  <span style="color:var(--text-3); margin-left:4px;" x-show="m.context_length"
-                    x-text="'('+Math.round(m.context_length/1024)+'k)'"></span>
-                </button>
+                    ? 'background:var(--accent-dim);'
+                    : ''"
+                  @click="selectModel(prov, m)"
+                  @mouseenter="$event.currentTarget.style.background = config.model?.name===m.id && config.model?.provider_id===prov.id ? 'var(--accent-dim)' : 'var(--surface-2)'"
+                  @mouseleave="$event.currentTarget.style.background = config.model?.name===m.id && config.model?.provider_id===prov.id ? 'var(--accent-dim)' : ''">
+                  <div style="display:flex; align-items:center; gap:8px; min-width:0;">
+                    <span x-show="config.model?.name===m.id && config.model?.provider_id===prov.id"
+                      style="color:var(--accent-2); font-size:.8rem; flex-shrink:0;">✓</span>
+                    <span style="font-size:.82rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"
+                      :style="config.model?.name===m.id && config.model?.provider_id===prov.id ? 'color:var(--accent-2);' : 'color:var(--text-1);'"
+                      x-text="m.id"></span>
+                  </div>
+                  <span style="font-size:.72rem; color:var(--text-3); flex-shrink:0; margin-left:8px;"
+                    x-show="m.context_length"
+                    x-text="Math.round(m.context_length/1024)+'k ctx'"></span>
+                </div>
               </template>
             </div>
           </div>
@@ -687,10 +737,13 @@
       </template>
     </div>
 
-    <!-- Model settings -->
+    <!-- Model settings (shown when model selected) -->
     <div class="card" style="margin-top:16px;" x-show="config.model?.name">
-      <div style="font-weight:600; font-size:.9rem; color:var(--accent-2); margin-bottom:14px;">
-        Model Settings — <span class="mono" x-text="config.model?.name"></span>
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; flex-wrap:wrap; gap:8px;">
+        <div style="font-weight:600; font-size:.9rem; color:var(--accent-2);">
+          Model Settings — <span class="mono" x-text="config.model?.name"></span>
+        </div>
+        <span style="font-size:.75rem; color:var(--text-3);">Changes auto-save when selecting a model. Adjust below + Save for manual tuning.</span>
       </div>
       <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:16px;">
         <div>
@@ -1468,6 +1521,7 @@ function app() {
     providerError: '',
     providerTestResults: {},
     providerModels: {},
+    modelSearch: {},
     modelInfo: {},
     modelSaved: false,
 
@@ -1562,17 +1616,47 @@ function app() {
       this.providerTestResults[prov.id] = await r.json();
     },
 
+    async setActiveProvider(prov) {
+      // Mark chosen provider active, all others inactive
+      const updated = (this.config.providers ?? []).map(p => ({ ...p, active: p.id === prov.id }));
+      await this.patchConfig({ providers: updated });
+      await this.loadConfig();
+      this.showToast(`"${prov.name}" is now the active provider`);
+    },
+
+    async toggleModelList(prov) {
+      if (this.providerModels[prov.id]) {
+        // Already loaded — toggle visibility by setting to null
+        this.providerModels[prov.id] = null;
+      } else {
+        await this.fetchModels(prov);
+      }
+    },
+
     async fetchModels(prov) {
       const r = await fetch(`/api/v1/providers/${prov.id}/models`);
-      this.providerModels[prov.id] = await r.json();
+      const models = await r.json();
+      this.providerModels[prov.id] = Array.isArray(models) ? models : [];
+    },
+
+    filteredModels(provId) {
+      const models = this.providerModels[provId] ?? [];
+      const q = (this.modelSearch[provId] ?? '').toLowerCase();
+      return q ? models.filter(m => m.id.toLowerCase().includes(q)) : models;
     },
 
     async selectModel(prov, model) {
       this.config.model = { ...this.config.model, provider_id: prov.id, name: model.id };
-      const r = await fetch(`/api/v1/providers/${prov.id}/models/${encodeURIComponent(model.id)}/info`);
-      const info = await r.json();
-      this.modelInfo[model.id] = info;
-      if (info.context_length && !this.config.model.context_size) this.config.model.context_size = null;
+      // Fetch model info for context length hint
+      try {
+        const r = await fetch(`/api/v1/providers/${prov.id}/models/${encodeURIComponent(model.id)}/info`);
+        const info = await r.json();
+        this.modelInfo[model.id] = info;
+        if (info.context_length && !this.config.model.context_size) this.config.model.context_size = null;
+      } catch (_) {}
+      // Auto-save model selection
+      await this.patchConfig({ model: this.config.model });
+      this.showToast(`Model set: ${model.id}`);
     },
 
     async saveModelSettings() {
