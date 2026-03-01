@@ -720,21 +720,36 @@
       <span>Prompts compose with <code>{{include: name}}</code> — place files in <code>prompts/custom/</code> to override built-ins.</span>
     </div>
 
+    <div style="margin-bottom:8px; font-size:.78rem; color:var(--text-3);">
+      Нажми на карточку чтобы включить / выключить промпт. <code>base</code> — обязательный, всегда первый.
+    </div>
     <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
-      <template x-for="name in ['base','code_review','security','performance','style']" :key="name">
-        <div class="card" style="display:flex; align-items:flex-start; justify-content:space-between; gap:10px;">
-          <div style="flex:1;">
-            <div class="mono text-accent" style="font-size:.82rem; margin-bottom:5px;" x-text="name+'.md'"></div>
-            <div style="font-size:.78rem; color:var(--text-3);" x-text="{
-              base: 'Role definition + anti-injection rules (always first)',
-              code_review: 'Review format, output structure, principles',
-              security: 'Injection, auth, crypto, secrets checks',
-              performance: 'N+1, O(n²), blocking async, indexes',
-              style: 'Naming, nesting, error handling, tests'
-            }[name]"></div>
+      <template x-for="[name, desc] in [
+          ['base',        'Role definition + anti-injection rules (always first)'],
+          ['code_review', 'Review format, output structure, principles'],
+          ['security',    'Injection, auth, crypto, secrets checks'],
+          ['performance', 'N+1, O(n²), blocking async, indexes'],
+          ['style',       'Naming, nesting, error handling, tests']]" :key="name">
+        <div class="card"
+          style="display:flex; align-items:flex-start; justify-content:space-between; gap:10px; transition: border-color .15s, background .15s;"
+          :style="(config.prompts?.system??[]).includes(name)
+            ? 'border-color:var(--accent); background:var(--accent-dim); cursor:pointer;'
+            : name === \'base\'
+              ? \'opacity:.6; cursor:not-allowed;\'
+              : \'cursor:pointer;\'"
+          @click="name !== 'base' && togglePrompt(name)">
+          <div style="flex:1; pointer-events:none;">
+            <div class="mono" style="font-size:.82rem; margin-bottom:5px;"
+              :style="(config.prompts?.system??[]).includes(name) ? 'color:var(--accent-2);' : 'color:var(--text-2);'"
+              x-text="name+'.md'"></div>
+            <div style="font-size:.78rem; color:var(--text-3);" x-text="desc"></div>
           </div>
-          <span :class="(config.prompts?.system??[]).includes(name) ? 'badge badge-green' : 'badge badge-gray'"
-            x-text="(config.prompts?.system??[]).includes(name) ? 'active' : 'off'"></span>
+          <div style="pointer-events:none; display:flex; align-items:center; gap:6px; flex-shrink:0;">
+            <span x-show="name === 'base'" class="badge badge-gray" style="font-size:.65rem;">required</span>
+            <span x-show="name !== 'base'"
+              :class="(config.prompts?.system??[]).includes(name) ? 'badge badge-green' : 'badge badge-gray'"
+              x-text="(config.prompts?.system??[]).includes(name) ? '✓ on' : 'off'"></span>
+          </div>
         </div>
       </template>
     </div>
@@ -1541,6 +1556,17 @@ function app() {
     removePrompt(idx) {
       if (idx === 0) return;
       this.config.prompts.system.splice(idx, 1);
+    },
+
+    togglePrompt(name) {
+      if (name === 'base') return; // base is always required
+      const sys = this.config.prompts.system;
+      const idx = sys.indexOf(name);
+      if (idx === -1) {
+        sys.push(name);
+      } else {
+        sys.splice(idx, 1);
+      }
     },
 
     async savePromptConfig() {
