@@ -605,6 +605,11 @@ def _find_target(cfg: AppConfig, project_id: str) -> ReviewTarget | None:
             return t
         if t.type == "project" and t.id == project_id:
             return t
+        if t.type == "group":
+            # Match if project_ids list contains this project,
+            # OR if project_ids is empty (wildcard — match all in group)
+            if not t.project_ids or project_id in t.project_ids:
+                return t
     return None
 
 

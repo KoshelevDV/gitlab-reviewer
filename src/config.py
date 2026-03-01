@@ -83,6 +83,10 @@ class ReviewTarget(BaseModel):
     review_cooldown_minutes: int | None = None
     # Max files per review — None = use AppConfig.max_files_per_review
     max_files_per_review: int | None = None
+    # For type=group: explicit list of project_ids that belong to this group.
+    # Populated via UI (GitLab API browse) or manually in config.yml.
+    # Empty list = match all projects (use with caution).
+    project_ids: list[str] = Field(default_factory=list)
 
 
 class NotificationFormat(StrEnum):

@@ -17,7 +17,7 @@ from src.config import (
 )
 from src.gitlab_client import FileDiff, MRInfo
 from src.queue_manager import ReviewJob
-from src.reviewer import Reviewer, _severity_count, set_database
+from src.reviewer import Reviewer, _find_target, _severity_count, set_database
 
 
 @pytest.fixture
@@ -312,6 +312,53 @@ class TestErrorHandling:
         assert any(r.status == "error" for r in records)
 
 
+class TestFindTarget:
+    def _make_cfg(self, *targets: ReviewTarget) -> AppConfig:
+        return AppConfig(review_targets=list(targets))
+
+    def test_find_target_type_all(self):
+        cfg = self._make_cfg(ReviewTarget(type="all", id=""))
+        result = _find_target(cfg, "999")
+        assert result is not None
+        assert result.type == "all"
+
+    def test_find_target_type_project_exact(self):
+        cfg = self._make_cfg(ReviewTarget(type="project", id="42"))
+        result = _find_target(cfg, "42")
+        assert result is not None
+        assert result.id == "42"
+
+    def test_find_target_type_project_miss(self):
+        cfg = self._make_cfg(ReviewTarget(type="project", id="42"))
+        result = _find_target(cfg, "99")
+        assert result is None
+
+    def test_find_target_type_group_with_project_ids(self):
+        cfg = self._make_cfg(ReviewTarget(type="group", id="10", project_ids=["42", "43"]))
+        result = _find_target(cfg, "42")
+        assert result is not None
+        assert result.type == "group"
+
+    def test_find_target_type_group_project_ids_miss(self):
+        cfg = self._make_cfg(ReviewTarget(type="group", id="10", project_ids=["99"]))
+        result = _find_target(cfg, "42")
+        assert result is None
+
+    def test_find_target_type_group_empty_project_ids(self):
+        cfg = self._make_cfg(ReviewTarget(type="group", id="10", project_ids=[]))
+        result = _find_target(cfg, "42")
+        assert result is not None
+        assert result.type == "group"
+
+    def test_find_target_returns_none_when_no_match(self):
+        cfg = self._make_cfg(
+            ReviewTarget(type="project", id="1"),
+            ReviewTarget(type="group", id="10", project_ids=["5", "6"]),
+        )
+        result = _find_target(cfg, "999")
+        assert result is None
+
+
 class TestSeverityCount:
     def test_critical_counted(self):
         text = "- [CRITICAL] SQL injection\n- [CRITICAL] RCE"
@@ -331,3 +378,36 @@ class TestSeverityCount:
     def test_case_insensitive(self):
         counts = _severity_count("[critical] bad stuff")
         assert counts["critical"] == 1
+
+
+class TestFindTarget:
+    def _cfg(self, targets):
+        return AppConfig(review_targets=targets)
+
+    def test_type_all_matches_any(self):
+        cfg = self._cfg([ReviewTarget(type="all", id="")])
+        assert _find_target(cfg, "42") is not None
+
+    def test_type_project_exact_match(self):
+        cfg = self._cfg([ReviewTarget(type="project", id="42")])
+        assert _find_target(cfg, "42") is not None
+
+    def test_type_project_no_match(self):
+        cfg = self._cfg([ReviewTarget(type="project", id="99")])
+        assert _find_target(cfg, "42") is None
+
+    def test_type_group_with_project_ids_match(self):
+        cfg = self._cfg([ReviewTarget(type="group", id="10", project_ids=["42", "43"])])
+        assert _find_target(cfg, "42") is not None
+
+    def test_type_group_with_project_ids_no_match(self):
+        cfg = self._cfg([ReviewTarget(type="group", id="10", project_ids=["99"])])
+        assert _find_target(cfg, "42") is None
+
+    def test_type_group_empty_project_ids_wildcard(self):
+        cfg = self._cfg([ReviewTarget(type="group", id="10", project_ids=[])])
+        assert _find_target(cfg, "any-project") is not None
+
+    def test_returns_none_when_no_match(self):
+        cfg = self._cfg([ReviewTarget(type="project", id="99")])
+        assert _find_target(cfg, "42") is None
