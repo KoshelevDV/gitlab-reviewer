@@ -322,18 +322,21 @@ async def _with_retry(fn):
 
 ## Prioritized Backlog
 
-| Priority | Item | Effort | Impact |
-|----------|------|--------|--------|
-| 🔴 P0 | FT-1: Slash-команды в MR | L | 🔥 Core UX |
-| 🔴 P0 | FT-2: Walkthrough Summary + Risk Score | M | 🔥 Core UX |
-| 🟠 P1 | Q-7: HTTP retry (tenacity) | S | Reliability |
-| 🟠 P1 | Q-5: group target matching fix | S | Bug fix |
-| 🟠 P1 | Q-3: queue restart after drain | S | Bug fix |
-| 🟠 P1 | Q-4: prompt cache invalidation | S | Correctness |
-| 🟠 P1 | FT-7: Streaming review in UI | M | UX |
-| 🟡 P2 | FT-3: Incremental review | L | Efficiency |
-| 🟡 P2 | FT-4: Language-aware prompts | M | Quality |
-| 🟡 P2 | Q-10: CSV export | M | Analytics |
-| 🟢 P3 | FT-6: Automation rules YAML | XL | Power users |
-| 🟢 P3 | FT-5: Feedback learning | XL | Long-term |
-| 🟢 P3 | Q-6: Weekly stats API | S | Analytics |
+| Priority | Item | Effort | Impact | Статус |
+|----------|------|--------|--------|--------|
+| 🔴 P0 | FT-1: Slash-команды в MR | L | 🔥 Core UX | ✅ Done (`fe3c2aa`) |
+| 🔴 P0 | FT-2: Walkthrough Summary + Risk Score | M | 🔥 Core UX | ✅ Done (`94ad3e4`) |
+| 🟠 P1 | Q-7: HTTP retry (tenacity) | S | Reliability | ✅ Done (`d1cbb1b`) |
+| 🟠 P1 | Q-5: group target matching fix | S | Bug fix | ✅ Done |
+| 🟠 P1 | Q-3: queue restart after drain | S | Bug fix | ✅ Done |
+| 🟠 P1 | Q-4: prompt cache invalidation | S | Correctness | ✅ Done |
+| 🟠 P1 | FT-7: Streaming review in UI | M | UX | ✅ Done (`e1de6b3`) |
+| 🟡 P2 | FT-3: Incremental review | L | Efficiency | ✅ Done (`1d22cf7`) |
+| 🟡 P2 | FT-4: Language-aware prompts | M | Quality | ✅ Done (`8afedc1`) |
+| 🟡 P2 | Q-10: CSV export | M | Analytics | ✅ Done (`8969dd7`) |
+| 🟡 P2 | Q-1: dry_run review trigger | S | DX | ✅ Done (`8969dd7`) |
+| 🟡 P2 | Q-6: Weekly stats API | S | Analytics | ✅ Done (`8969dd7`) |
+| 🟢 P3 | FT-5: Reviewer Feedback Learning | XL | Long-term | 🔲 Open |
+| 🟢 P3 | FT-6: Automation Rules (YAML) | XL | Power users | 🔲 Open |
+
+**Открытые CODE_REVIEW items:** WARN-4, WARN-6, WARN-7, STYLE-1 (все Low/Medium)

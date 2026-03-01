@@ -254,22 +254,24 @@ if t.type == "group" and t.id == project_id:
 
 ## Итоговая таблица
 
-| ID | Серьёзность | Файл | Описание |
-|----|-------------|------|----------|
-| BUG-1 | 🔴 Critical | webhook.py + main.py | Двойной /health, реальная проверка не работает |
-| BUG-2 | 🔴 Critical | gitlab_client.py | tls_verify игнорируется |
-| BUG-3 | 🔴 Critical | config.py | Env-var секреты пишутся в config.yml |
-| BUG-4 | 🟠 High | db.py | datetime.utcnow() deprecated + лишнее соединение |
-| BUG-5 | 🟠 High | prompt_engine.py | Счётчик инъекций всегда 0 |
-| BUG-6 | 🟠 High | reviewer.py | Untracked delayed requeue tasks |
-| BUG-7 | 🟠 High | webhook.py | Нет лимита размера тела |
-| WARN-1 | 🟡 Medium | prompt_engine.py | Кэш промптов не инвалидируется |
-| WARN-2 | 🟡 Medium | queue_api.py | /drain необратим |
-| WARN-3 | 🟡 Medium | reviewer.py | Тип queue: QueueManager неверный |
-| WARN-4 | 🟡 Medium | gitlab_client.py | Sequential requests в test_connection |
-| WARN-5 | 🟡 Medium | webhook.py | Слабая валидация project_id/mr_iid |
-| WARN-6 | 🟡 Medium | llm_client.py | KeyError fallback слишком широкий |
-| WARN-7 | 🟢 Low | llm_client.py | import json внутри генератора |
-| STYLE-1 | 🟢 Low | backends/* | Дублирующийся dedup-код |
-| STYLE-2 | 🟢 Low | reviewer.py | group target matching не работает |
-| STYLE-3 | 🟢 Low | — | Нет retry на HTTP-ошибки |
+| ID | Серьёзность | Файл | Описание | Статус |
+|----|-------------|------|----------|--------|
+| BUG-1 | 🔴 Critical | webhook.py + main.py | Двойной /health, реальная проверка не работает | ✅ Fixed |
+| BUG-2 | 🔴 Critical | gitlab_client.py | tls_verify игнорируется | ✅ Fixed |
+| BUG-3 | 🔴 Critical | config.py | Env-var секреты пишутся в config.yml | ✅ Fixed |
+| BUG-4 | 🟠 High | db.py | datetime.utcnow() deprecated + лишнее соединение | ✅ Fixed |
+| BUG-5 | 🟠 High | prompt_engine.py | Счётчик инъекций всегда 0 | ✅ Fixed |
+| BUG-6 | 🟠 High | reviewer.py | Untracked delayed requeue tasks | ✅ Fixed |
+| BUG-7 | 🟠 High | webhook.py | Нет лимита размера тела | ✅ Fixed |
+| WARN-1 | 🟡 Medium | prompt_engine.py | Кэш промптов не инвалидируется | ✅ Fixed (Q-4) |
+| WARN-2 | 🟡 Medium | queue_api.py | /drain необратим | ✅ Fixed (Q-3: /queue/start) |
+| WARN-3 | 🟡 Medium | reviewer.py | Тип queue: QueueManager неверный | ✅ Fixed (QueueLike Protocol) |
+| WARN-4 | 🟡 Medium | gitlab_client.py | Sequential requests в test_connection | 🔲 Open |
+| WARN-5 | 🟡 Medium | webhook.py | Слабая валидация project_id/mr_iid | ✅ Fixed |
+| WARN-6 | 🟡 Medium | llm_client.py | KeyError fallback слишком широкий | 🔲 Open |
+| WARN-7 | 🟢 Low | llm_client.py | import json внутри генератора | 🔲 Open |
+| STYLE-1 | 🟢 Low | backends/* | Дублирующийся dedup-код | 🔲 Open |
+| STYLE-2 | 🟢 Low | reviewer.py | group target matching не работает | ✅ Fixed (Q-5) |
+| STYLE-3 | 🟢 Low | — | Нет retry на HTTP-ошибки | ✅ Fixed (Q-7 tenacity) |
+
+**Итого:** 13/17 закрыто · 4 открыто (WARN-4, WARN-6, WARN-7, STYLE-1)

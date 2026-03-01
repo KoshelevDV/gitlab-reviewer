@@ -241,6 +241,12 @@ After v0.2: open `http://server:8000/ui/` to configure everything.
 - Health check MUST be from `api/health.py` (full DB+queue+config checks) — don't use the old webhook stub
 - `save_config()` strips `notifications.telegram_bot_token/chat_id/webhook_url` — they come from env-vars only
 - `tls_verify=False` → passed to `httpx.AsyncClient(verify=False)` in `GitLabClient`
+- **Slash commands**: GitLab Note Hook must be enabled separately in webhook config (Triggers → Comments); route is `/webhook/gitlab`
+- **SSE streaming**: `register_stream(job_id)` MUST be called BEFORE `enqueue()`, otherwise worker won't find the queue
+- **Incremental review**: `get_last_mr_version_id()` queries only `status='posted'` rows — skipped/error reviews don't count
+- **Language detection**: threshold is 40% of files — avoids mislabelling polyglot repos
+- **PromptEngine init**: accepts `Path | str` — internally converts to Path; old code broke when `str` was passed
+- **Route ordering in FastAPI**: literal paths (`/stats/weekly`, `/export.csv`) MUST be registered BEFORE parameterized (`/{review_id}`) — otherwise FastAPI captures them as path params
 
 ## Status
 

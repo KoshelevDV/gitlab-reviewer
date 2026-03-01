@@ -257,6 +257,50 @@ queue:
 
 ---
 
+## Slash Commands
+
+Post slash commands in any MR comment to interact with the reviewer:
+
+| Command | Description |
+|---------|-------------|
+| `/ask <question>` | Ask anything about the MR diff |
+| `/improve [path]` | Get improvement suggestions (optionally scoped to a file) |
+| `/summary` | Generate a concise MR walkthrough |
+| `/help` | List available commands |
+
+**Setup:** Enable **Comments** trigger in your GitLab webhook settings (in addition to Merge request events).  
+The bot replies as a new MR note within seconds.
+
+**Example:**
+```
+/ask What's the risk of this database migration?
+/improve src/auth/login.py
+/summary
+```
+
+---
+
+## Streaming Reviews
+
+To watch a review generate in real time:
+
+```bash
+# 1. Trigger with stream=true
+curl -X POST http://localhost:8000/api/v1/queue/review \
+  -H "Content-Type: application/json" \
+  -d '{"project_id": 42, "mr_iid": 7, "stream": true}'
+# → {"status": "queued", "job_id": 123, "stream_url": "/api/v1/queue/review/123/stream"}
+
+# 2. Connect to SSE stream
+curl -N http://localhost:8000/api/v1/queue/review/123/stream
+# → data: {"text": "## Code Review\n\n"}
+# → data: {"text": "Looking at the changes..."}
+# → event: done
+# → data: {}
+```
+
+---
+
 ## Docker
 
 ```bash
@@ -318,8 +362,14 @@ See [ROADMAP.md](ROADMAP.md) and [docs/CODE_REVIEW.md](docs/CODE_REVIEW.md) for 
 - 🛡️ Защита от prompt injection
 - 📝 Составные промпты с `{{include:}}`
 - 🗂️ Цели ревью: группы, проекты, ветки, auto-approve
-- ⚡ Очередь ревью с ограничением конкурентности
+- ⚡ **3 бэкенда очереди** — `memory`, `valkey`, `kafka`
 - 🔁 Дедупликация по hash диффа
+- 📊 **Risk Score** — детерминированный скор 0–100 без LLM
+- 📝 **Walkthrough Summary** — краткий обзор MR перед комментариями
+- 🔄 **Инкрементальное ревью** — только изменения с последней версии
+- 🌍 **Language-aware промпты** — автодетект Python/Rust/TS/Go
+- 💬 **Slash-команды** — `/ask`, `/improve`, `/summary` прямо в комментарии
+- 📡 **SSE стриминг** — наблюдать за генерацией в реальном времени
 - 💾 `config.yml` — единый источник истины
 
 ## Быстрый старт
