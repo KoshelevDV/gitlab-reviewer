@@ -371,6 +371,16 @@ Browser ─────────────┤ GET /ui/                     
 
 ---
 
+## Выбор бэкенда очереди
+
+| Бэкенд | Когда использовать | Конфиг |
+|--------|-------------------|--------|
+| `memory` | Dev/single instance, <50 MR/день | `queue.backend: memory` |
+| `valkey` | Prod multi-instance, <1000 MR/день | `queue.backend: valkey` + profile |
+| `kafka` | High-volume, >1000 MR/день, audit trail | `queue.backend: kafka` + profile |
+
+---
+
 ## Версии и приоритеты
 
 | Версия | Фаза | Ключевые фичи | Приоритет |
@@ -390,4 +400,4 @@ Browser ─────────────┤ GET /ui/                     
 | v0.7d | Cooldown | review_cooldown_minutes per MR, per-target override | ✅ Done |
 | v0.8 | Debounce + Dedup | Latest-wins supersede, diff hash dedup in reviewer, delayed retry | ✅ Done |
 | v0.9 | Valkey | Distributed queue+cache, multi-instance | ✅ Done |
-| v0.10 | Kafka | High-volume event streaming | 💡 Optional |
+| v0.10 | Kafka | High-volume event streaming (aiokafka, KRaft docker-compose profile) | ✅ Done |

@@ -23,6 +23,9 @@ dependencies = [
 valkey = [
     "redis>=4.2",           # redis.asyncio — Valkey (Redis-compatible) backend
 ]
+kafka = [
+    "aiokafka>=0.10",       # async Kafka client
+]
 test = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
@@ -32,6 +35,7 @@ test = [
     "pytest-cov>=5.0",      # coverage reports
     "fakeredis>=2.20",      # in-process Redis for Valkey backend tests
     "redis>=4.2",           # required by fakeredis
+    "aiokafka>=0.10",       # Kafka backend tests (mocked)
 ]
 
 [tool.pytest.ini_options]

@@ -33,6 +33,23 @@ def create_queue_manager(cfg: AppConfig) -> QueueManager:
             cache_ttl=cfg.cache.ttl,
         )
 
+    if cfg.queue.backend == "kafka":
+        try:
+            from .kafka_backend import KafkaQueueManager
+        except ImportError as exc:
+            raise RuntimeError(
+                "Kafka backend requires the 'aiokafka' package. "
+                "Install with: pip install 'gitlab-reviewer[kafka]'"
+            ) from exc
+        return KafkaQueueManager(  # type: ignore[return-value]
+            brokers=cfg.queue.kafka_brokers,
+            topic=cfg.queue.kafka_topic,
+            group_id=cfg.queue.kafka_group_id,
+            max_concurrent=cfg.queue.max_concurrent,
+            max_size=cfg.queue.max_queue_size,
+            cache_ttl=cfg.cache.ttl,
+        )
+
     return QueueManager(
         max_concurrent=cfg.queue.max_concurrent,
         max_size=cfg.queue.max_queue_size,

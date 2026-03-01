@@ -105,10 +105,15 @@ class NotificationConfig(BaseModel):
 
 
 class QueueConfig(BaseModel):
-    backend: str = "memory"  # memory | valkey
+    backend: str = "memory"  # memory | valkey | kafka
     max_concurrent: int = 3
     max_queue_size: int = 100
+    # Valkey backend
     valkey_url: str = "redis://localhost:6379"
+    # Kafka backend
+    kafka_brokers: str = "localhost:9092"  # comma-separated broker list
+    kafka_topic: str = "glr.mr.events"
+    kafka_group_id: str = "glr-reviewers"
 
 
 class CacheConfig(BaseModel):
