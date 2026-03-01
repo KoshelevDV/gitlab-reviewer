@@ -5,6 +5,22 @@ No data leaves your infrastructure. Everything configured through a **Web UI**.
 
 ---
 
+## Screenshots
+
+| Dashboard | Reviews |
+|-----------|---------|
+| ![Dashboard](docs/screenshots/01-dashboard.png) | ![Reviews](docs/screenshots/02-reviews.png) |
+
+| Queue | Providers |
+|-------|-----------|
+| ![Queue](docs/screenshots/03-queue.png) | ![Providers](docs/screenshots/04-providers.png) |
+
+| Prompts | Logs |
+|---------|------|
+| ![Prompts](docs/screenshots/05-prompts.png) | ![Logs](docs/screenshots/06-logs.png) |
+
+---
+
 ## Features
 
 - 🤖 Automatic review on every MR open / update
@@ -359,6 +375,16 @@ See [ROADMAP.md](ROADMAP.md) and [docs/CODE_REVIEW.md](docs/CODE_REVIEW.md) for 
 
 Автоматическое ревью GitLab MR с помощью **локальной LLM**.  
 Данные не покидают вашу инфраструктуру. Всё настраивается через **Web UI**.
+
+## Скриншоты
+
+| Dashboard | Reviews |
+|-----------|---------|
+| ![Dashboard](docs/screenshots/01-dashboard.png) | ![Reviews](docs/screenshots/02-reviews.png) |
+
+| Queue | Providers |
+|-------|-----------|
+| ![Queue](docs/screenshots/03-queue.png) | ![Providers](docs/screenshots/04-providers.png) |
 
 ## Возможности
 
