@@ -8,3 +8,7 @@ dist/
 .ruff_cache/
 prompts/custom/*.md
 !prompts/custom/example_team.md
+
+# Database files
+data/
+*.db
