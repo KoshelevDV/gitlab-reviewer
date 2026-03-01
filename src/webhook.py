@@ -18,6 +18,7 @@ from fastapi.responses import JSONResponse
 
 from .config import get_config
 from .queue_manager import QueueManager, ReviewJob
+from .slash_commands import execute_slash_command, parse_slash_command
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +53,10 @@ def make_webhook_router() -> APIRouter:
             raise HTTPException(status_code=401, detail="Invalid webhook token")
 
         # 2. Event type filter
+        if x_gitlab_event == "Note Hook":
+            body = await request.json()
+            return await _handle_note_hook(body, cfg)
+
         if x_gitlab_event != "Merge Request Hook":
             return JSONResponse({"status": "ignored", "reason": "not a merge request event"})
 
@@ -93,6 +98,79 @@ def make_webhook_router() -> APIRouter:
         return JSONResponse({"status": status, "project_id": project_id, "mr_iid": mr_iid})
 
     return router
+
+
+async def _handle_note_hook(body: dict[str, Any], cfg) -> JSONResponse:  # type: ignore[no-untyped-def]
+    """Process a GitLab Note Hook (MR comment) for slash commands."""
+    attrs = body.get("object_attributes", {})
+    note_body: str = attrs.get("note", "")
+    noteable_type: str = attrs.get("noteable_type", "")
+
+    # Only handle MR comments
+    if noteable_type != "MergeRequest":
+        return JSONResponse({"status": "ignored", "reason": "not an MR note"})
+
+    cmd = parse_slash_command(note_body)
+    if cmd is None:
+        return JSONResponse({"status": "ignored", "reason": "not a slash command"})
+
+    mr_info = body.get("merge_request", {})
+    raw_project_id = body.get("project", {}).get("id")
+    raw_mr_iid = mr_info.get("iid")
+
+    if not raw_project_id or not isinstance(raw_mr_iid, int) or raw_mr_iid <= 0:
+        return JSONResponse(
+            {"status": "error", "reason": "invalid project/MR IDs"}, status_code=400
+        )
+
+    # Execute slash command asynchronously (background task)
+    import asyncio
+
+    asyncio.get_event_loop().create_task(
+        _run_slash_command(cmd, raw_project_id, raw_mr_iid, cfg)
+    )
+    return JSONResponse({
+        "status": "accepted",
+        "command": cmd.name,
+        "project_id": raw_project_id,
+        "mr_iid": raw_mr_iid,
+    })
+
+
+async def _run_slash_command(cmd, project_id, mr_iid, cfg) -> None:  # type: ignore[no-untyped-def]
+    """Execute slash command and post reply as MR note (background task)."""
+    from .gitlab_client import GitLabClient
+
+    try:
+        reply = await execute_slash_command(
+            cmd=cmd,
+            project_id=project_id,
+            mr_iid=mr_iid,
+            gitlab_url=cfg.gitlab.url,
+            gitlab_token=cfg.gitlab_token or "",
+            llm_base_url=cfg.model.base_url,
+            llm_api_key=cfg.llm_api_key or "",
+            llm_model=cfg.model.model,
+            llm_temperature=cfg.model.temperature,
+            tls_verify=cfg.gitlab.tls_verify,
+        )
+        # Post reply as new MR note
+        note_body = f"<!-- slash-command:{cmd.name} -->\n{reply}"
+        gitlab = GitLabClient(
+            cfg.gitlab.url, cfg.gitlab_token or "", tls_verify=cfg.gitlab.tls_verify
+        )
+        try:
+            await gitlab.post_mr_note(project_id, mr_iid, note_body)
+        finally:
+            await gitlab.aclose()
+        logger.info(
+            "Slash command /%s reply posted: project=%s MR!%d",
+            cmd.name, project_id, mr_iid,
+        )
+    except Exception:
+        logger.exception(
+            "Slash command /%s failed: project=%s MR!%d", cmd.name, project_id, mr_iid
+        )
 
 
 def _verify_token(received: str | None, expected: str) -> bool:
