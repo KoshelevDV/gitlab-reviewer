@@ -556,6 +556,11 @@ class Reviewer:
                 (d.new_path or d.old_path): _parse_diff_line_map(d.diff)
                 for d in diffs
             }
+            # Content map for comment-line detection (snap to next real code line).
+            diff_content_maps: dict[str, dict[int, str]] = {
+                (d.new_path or d.old_path): _build_diff_content_map(d.diff)
+                for d in diffs
+            }
 
             # Fetch diff refs needed for positional comments
             refs = await gitlab.get_mr_diff_refs(job.project_id, job.mr_iid)
@@ -588,6 +593,24 @@ class Reviewer:
                             nearest,
                         )
                         target_line = nearest
+
+                    # If the target line is a comment-only line, advance to the
+                    # next non-comment code line so the annotation lands on
+                    # the actual statement rather than the explanatory comment.
+                    content_map = diff_content_maps.get(ann["path"], {})
+                    if _is_comment_content(content_map.get(target_line, "")):
+                        sorted_lines = sorted(ln for ln in file_map if ln > target_line)
+                        for candidate in sorted_lines:
+                            if not _is_comment_content(content_map.get(candidate, "")):
+                                logger.debug(
+                                    "Inline comment: '%s' line %d is a comment; "
+                                    "advancing to code line %d",
+                                    ann["path"],
+                                    target_line,
+                                    candidate,
+                                )
+                                target_line = candidate
+                                break
 
                     old_ln = file_map[target_line]
                     position: dict[str, object] = {
@@ -819,6 +842,49 @@ def _parse_diff_line_map(diff_str: str) -> dict[int, int | None]:
                 new_cursor += 1
                 old_cursor += 1
     return mapping
+
+
+_COMMENT_LINE_RE = re.compile(
+    r"^\s*("
+    r"#|//|/\*|\*/?|<!--|\{/?\*|--"  # Python/Ruby, C/JS, block comment, HTML, Lua
+    r")\s*",
+)
+
+
+def _is_comment_content(line_content: str) -> bool:
+    """Return True if *line_content* (the code part after the diff prefix) is comment-only."""
+    stripped = line_content.strip()
+    return bool(stripped and _COMMENT_LINE_RE.match(stripped))
+
+
+def _build_diff_content_map(diff_str: str) -> dict[int, str]:
+    """Parse a unified diff and return {new_line_number: line_content}.
+
+    Line content is the raw text without the leading `+`/` ` prefix.
+    Only new and context lines are included (deleted lines have no new_line).
+    """
+    content_map: dict[int, str] = {}
+    old_cursor = 0
+    new_cursor = 0
+    for raw in diff_str.splitlines():
+        if raw.startswith("@@"):
+            m = re.match(r"^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@", raw)
+            if m:
+                old_cursor = int(m.group(1))
+                new_cursor = int(m.group(2))
+            continue
+        if raw.startswith("+++") or raw.startswith("---"):
+            continue
+        if raw.startswith("+"):
+            content_map[new_cursor] = raw[1:]
+            new_cursor += 1
+        elif raw.startswith("-"):
+            old_cursor += 1
+        elif not raw.startswith("\\"):
+            content_map[new_cursor] = raw[1:] if raw else ""
+            new_cursor += 1
+            old_cursor += 1
+    return content_map
 
 
 def _annotate_diff_with_line_numbers(diff_str: str) -> str:

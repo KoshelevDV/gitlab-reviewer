@@ -688,3 +688,57 @@ class TestAnnotateDiffWithLineNumbers:
         from src.reviewer import _annotate_diff_with_line_numbers
 
         assert _annotate_diff_with_line_numbers("") == ""
+
+
+class TestIsCommentContent:
+    """Unit tests for _is_comment_content."""
+
+    def test_python_comment(self):
+        from src.reviewer import _is_comment_content
+        assert _is_comment_content("# this is a comment") is True
+        assert _is_comment_content("    # indented comment") is True
+
+    def test_cpp_line_comment(self):
+        from src.reviewer import _is_comment_content
+        assert _is_comment_content("// single line") is True
+        assert _is_comment_content("    // indented") is True
+
+    def test_block_comment_line(self):
+        from src.reviewer import _is_comment_content
+        assert _is_comment_content("/* start block */") is True
+        assert _is_comment_content("* middle of block") is True
+
+    def test_code_lines_not_comment(self):
+        from src.reviewer import _is_comment_content
+        assert _is_comment_content('db_password = "supersecret123"') is False
+        assert _is_comment_content("def store_config():") is False
+        assert _is_comment_content("cursor.execute(query)") is False
+
+    def test_empty_line(self):
+        from src.reviewer import _is_comment_content
+        assert _is_comment_content("") is False
+        assert _is_comment_content("   ") is False
+
+
+class TestBuildDiffContentMap:
+    """Unit tests for _build_diff_content_map."""
+
+    def test_added_lines_content(self):
+        from src.reviewer import _build_diff_content_map
+        diff = "@@ -0,0 +5,2 @@\n+hello = 1\n+world = 2\n"
+        m = _build_diff_content_map(diff)
+        assert m[5] == "hello = 1"
+        assert m[6] == "world = 2"
+
+    def test_context_line_content(self):
+        from src.reviewer import _build_diff_content_map
+        diff = "@@ -3,1 +3,1 @@\n ctx_line\n"
+        m = _build_diff_content_map(diff)
+        assert m[3] == "ctx_line"
+
+    def test_deleted_lines_excluded(self):
+        from src.reviewer import _build_diff_content_map
+        diff = "@@ -3,1 +3,0 @@\n-removed\n"
+        m = _build_diff_content_map(diff)
+        # deleted line has no new_line entry
+        assert 3 not in m
