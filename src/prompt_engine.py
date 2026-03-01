@@ -69,6 +69,12 @@ class PromptEngine:
     # Public API
     # ------------------------------------------------------------------
 
+    def invalidate_cache(self) -> None:
+        """Clear the prompt file cache. Call after config reload or prompt file changes."""
+        count = len(self._cache)
+        self._cache.clear()
+        logger.info("Prompt cache invalidated (%d entries cleared)", count)
+
     def build_system_prompt(self, names: list[str]) -> str:
         """
         Assemble a system prompt from a list of prompt names.

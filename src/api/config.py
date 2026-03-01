@@ -2,12 +2,23 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 
 from ..config import CONFIG_PATH, AppConfig, get_config, reload_config, save_config
+
+if TYPE_CHECKING:
+    from ..prompt_engine import PromptEngine
+
+_prompt_engine: PromptEngine | None = None
+
+
+def set_prompt_engine(pe: PromptEngine) -> None:
+    """Register the PromptEngine instance so the reload endpoint can invalidate its cache."""
+    global _prompt_engine  # noqa: PLW0603
+    _prompt_engine = pe
 
 router = APIRouter(prefix="/api/v1/config", tags=["config"])
 
@@ -54,6 +65,8 @@ async def update_config(body: dict) -> JSONResponse:
 
     save_config(new_cfg, CONFIG_PATH)
     reload_config(CONFIG_PATH)
+    if _prompt_engine is not None:
+        _prompt_engine.invalidate_cache()
     return JSONResponse({"status": "ok", "message": "Config saved and reloaded"})
 
 
@@ -61,6 +74,8 @@ async def update_config(body: dict) -> JSONResponse:
 async def reload_config_endpoint() -> JSONResponse:
     """Hot-reload config.yml without restarting the process."""
     cfg = reload_config(CONFIG_PATH)
+    if _prompt_engine is not None:
+        _prompt_engine.invalidate_cache()
     return JSONResponse(
         {
             "status": "ok",

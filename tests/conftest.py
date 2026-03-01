@@ -94,6 +94,7 @@ async def app(tmp_path, prompts_dir, db):
     from fastapi import FastAPI
 
     from src.api.config import router as config_router
+    from src.api.config import set_prompt_engine
     from src.api.gitlab_api import router as gitlab_router
     from src.api.health import router as health_router
     from src.api.health import set_database as health_set_db
@@ -108,6 +109,7 @@ async def app(tmp_path, prompts_dir, db):
     from src.api.reviews import set_queue_manager as reviews_set_queue
     from src.api.targets import router as targets_router
     from src.log_buffer import LogBuffer
+    from src.prompt_engine import PromptEngine
     from src.queue_manager import QueueManager
     from src.reviewer import set_database as reviewer_set_db
     from src.webhook import make_webhook_router
@@ -115,8 +117,10 @@ async def app(tmp_path, prompts_dir, db):
 
     q = QueueManager(max_concurrent=1, max_size=10)
     log_buf = LogBuffer(maxlen=100)
+    pe = PromptEngine(prompts_dir)
 
     # Wire singletons BEFORE creating the app (no lifespan dependency)
+    set_prompt_engine(pe)
     set_database(db)
     reviewer_set_db(db)
     health_set_db(db)

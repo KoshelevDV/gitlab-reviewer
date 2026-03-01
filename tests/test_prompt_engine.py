@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from src.prompt_engine import PromptEngine
 
 # ── sanitize_untrusted ────────────────────────────────────────────────────────
@@ -165,3 +167,61 @@ class TestPromptLoading:
         engine = PromptEngine(prompts_dir)
         result = engine.build_system_prompt(["deep_0"])
         assert "Level 0" in result
+
+
+# ── Cache invalidation ────────────────────────────────────────────────────────
+
+
+class TestCacheInvalidation:
+    def test_cache_populated_on_first_read(self, prompt_engine):
+        """After build_system_prompt, _cache should contain the loaded file entries."""
+        assert len(prompt_engine._cache) == 0  # starts empty
+        prompt_engine.build_system_prompt(["base"])
+        assert len(prompt_engine._cache) > 0
+
+    def test_invalidate_cache_clears_all(self, prompt_engine):
+        """invalidate_cache() must empty _cache completely."""
+        prompt_engine.build_system_prompt(["base", "security"])
+        assert len(prompt_engine._cache) > 0
+
+        prompt_engine.invalidate_cache()
+        assert len(prompt_engine._cache) == 0
+
+    def test_prompt_reloaded_after_invalidate(self, prompts_dir):
+        """After invalidating the cache a changed file must be re-read."""
+        sys_dir = prompts_dir / "system"
+        target = sys_dir / "base.md"
+
+        engine = PromptEngine(prompts_dir)
+        first = engine.build_system_prompt(["base"])
+
+        # Overwrite the file with new content
+        target.write_text("Updated content after reload")
+
+        # Without invalidation the old cached version is returned
+        cached = engine.build_system_prompt(["base"])
+        assert cached == first  # still old content
+
+        # After invalidation the new version must be returned
+        engine.invalidate_cache()
+        second = engine.build_system_prompt(["base"])
+        assert "Updated content after reload" in second
+
+    @pytest.mark.asyncio
+    async def test_api_reload_invalidates_cache(self, app, prompts_dir):
+        """POST /api/v1/config/reload must clear the PromptEngine cache."""
+        import src.api.config as config_api
+
+        pe = config_api._prompt_engine
+        assert pe is not None, "set_prompt_engine was not called in fixture"
+
+        # Populate the cache
+        pe.build_system_prompt(["base"])
+        assert len(pe._cache) > 0
+
+        # Hit the reload endpoint
+        r = await app.post("/api/v1/config/reload")
+        assert r.status_code == 200
+
+        # Cache must have been cleared by invalidate_cache()
+        assert len(pe._cache) == 0

@@ -20,6 +20,7 @@ import uvicorn
 from fastapi import FastAPI
 
 from .api.config import router as config_router
+from .api.config import set_prompt_engine
 from .api.gitlab_api import router as gitlab_router
 from .api.health import router as health_router
 from .api.health import set_database as health_set_db
@@ -72,6 +73,7 @@ def create_app() -> FastAPI:
     # ----------------------------------------------------------------
     prompts_dir = (Path(__file__).parent.parent / "prompts").resolve()
     prompts = PromptEngine(prompts_dir)
+    set_prompt_engine(prompts)
 
     queue = create_queue_manager(cfg)
     reviewer = Reviewer(prompts=prompts, queue=queue)
