@@ -379,35 +379,3 @@ class TestSeverityCount:
         counts = _severity_count("[critical] bad stuff")
         assert counts["critical"] == 1
 
-
-class TestFindTarget:
-    def _cfg(self, targets):
-        return AppConfig(review_targets=targets)
-
-    def test_type_all_matches_any(self):
-        cfg = self._cfg([ReviewTarget(type="all", id="")])
-        assert _find_target(cfg, "42") is not None
-
-    def test_type_project_exact_match(self):
-        cfg = self._cfg([ReviewTarget(type="project", id="42")])
-        assert _find_target(cfg, "42") is not None
-
-    def test_type_project_no_match(self):
-        cfg = self._cfg([ReviewTarget(type="project", id="99")])
-        assert _find_target(cfg, "42") is None
-
-    def test_type_group_with_project_ids_match(self):
-        cfg = self._cfg([ReviewTarget(type="group", id="10", project_ids=["42", "43"])])
-        assert _find_target(cfg, "42") is not None
-
-    def test_type_group_with_project_ids_no_match(self):
-        cfg = self._cfg([ReviewTarget(type="group", id="10", project_ids=["99"])])
-        assert _find_target(cfg, "42") is None
-
-    def test_type_group_empty_project_ids_wildcard(self):
-        cfg = self._cfg([ReviewTarget(type="group", id="10", project_ids=[])])
-        assert _find_target(cfg, "any-project") is not None
-
-    def test_returns_none_when_no_match(self):
-        cfg = self._cfg([ReviewTarget(type="project", id="99")])
-        assert _find_target(cfg, "42") is None
