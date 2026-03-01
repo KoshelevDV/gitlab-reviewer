@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass
 from urllib.parse import quote
@@ -65,11 +66,18 @@ class FileDiff:
 
 
 class GitLabClient:
-    def __init__(self, base_url: str, token: str, timeout: int = 30) -> None:
+    def __init__(
+        self,
+        base_url: str,
+        token: str,
+        timeout: int = 30,
+        tls_verify: bool = True,
+    ) -> None:
         self._base = base_url.rstrip("/")
         self._client = httpx.AsyncClient(
             headers={"PRIVATE-TOKEN": token, "Content-Type": "application/json"},
             timeout=timeout,
+            verify=tls_verify,
         )
 
     async def aclose(self) -> None:
@@ -81,14 +89,14 @@ class GitLabClient:
 
     async def test_connection(self) -> ConnectionInfo:
         try:
-            ver_resp = await self._client.get(f"{self._base}/api/v4/version")
+            ver_resp, user_resp = await asyncio.gather(
+                self._client.get(f"{self._base}/api/v4/version"),
+                self._client.get(f"{self._base}/api/v4/user"),
+            )
             ver_resp.raise_for_status()
-            version = ver_resp.json().get("version", "unknown")
-
-            user_resp = await self._client.get(f"{self._base}/api/v4/user")
             user_resp.raise_for_status()
+            version = ver_resp.json().get("version", "unknown")
             username = user_resp.json().get("username", "unknown")
-
             return ConnectionInfo(ok=True, version=version, username=username)
         except Exception as exc:  # noqa: BLE001
             return ConnectionInfo(ok=False, error=str(exc))

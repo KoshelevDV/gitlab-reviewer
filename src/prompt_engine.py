@@ -100,10 +100,10 @@ class PromptEngine:
 
         result = text
         for pat in _INJECTION_PATTERNS:
-            cleaned = pat.sub("[REDACTED]", result)
-            if cleaned != result:
-                stripped_count += result.count(pat.pattern)  # approx
-                result = cleaned
+            matches = pat.findall(result)
+            if matches:
+                stripped_count += len(matches)
+                result = pat.sub("[REDACTED]", result)
 
         if len(result) > max_chars:
             result = result[:max_chars]

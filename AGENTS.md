@@ -11,8 +11,8 @@ structured review comment to MR. Managed entirely through a Web UI.
 - **LLM backends:** ollama, llama.cpp HTTP server, any OpenAI-compatible endpoint
 - **Recommended model:** `qwen2.5-coder:32b` (Q4_K_M, ~20GB)
 - **Storage:** SQLite via aiosqlite (review history + persistent dedup cache)
-- **Optional:** Valkey (Redis-compatible) for distributed queue + cache
-- Dockerfile multi-stage, docker-compose, Helm chart
+- **Queue backends:** memory (default) · valkey/redis (`redis>=4.2`) · kafka (`aiokafka>=0.10`)
+- Dockerfile multi-stage, docker-compose (profiles: valkey, kafka), Helm chart
 
 ## Structure (current + planned)
 
@@ -91,10 +91,13 @@ review_targets:
       system: [base, security]  # optional per-target override
 
 queue:
-  backend: memory|valkey
+  backend: memory|valkey|kafka
   max_concurrent: 3
   max_queue_size: 100
-  valkey_url: redis://localhost:6379
+  valkey_url: redis://localhost:6379        # Valkey backend
+  kafka_brokers: localhost:9092             # Kafka backend (comma-separated)
+  kafka_topic: glr.mr.events               # Kafka backend
+  kafka_group_id: glr-reviewers            # Kafka backend
 
 cache:
   backend: memory|valkey
@@ -223,7 +226,12 @@ After v0.2: open `http://server:8000/ui/` to configure everything.
 - LLM timeout: 300s+ for large diffs on CPU/iGPU
 - `context_size` must fit both the system prompt AND the diff — don't set it below 8192
 - Atomic config write: write to `.config.yml.tmp` then `os.rename()` — avoids corrupt config on crash
-- Valkey dedup needs distributed lock (SETNX) to prevent double-review across instances
+- Valkey dedup: in-memory per-instance, seeded from DB at startup — NOT cross-instance; upgrade to SET NX EX for full cross-instance dedup
+- Kafka supersede: works per-partition (same MR → same partition → same consumer) — reliable without Redis
+- `_delayed_requeue` tasks must be tracked in `Reviewer._requeue_tasks` and cancelled at shutdown via `reviewer.cancel_pending()`
+- Health check MUST be from `api/health.py` (full DB+queue+config checks) — don't use the old webhook stub
+- `save_config()` strips `notifications.telegram_bot_token/chat_id/webhook_url` — they come from env-vars only
+- `tls_verify=False` → passed to `httpx.AsyncClient(verify=False)` in `GitLabClient`
 
 ## Status
 
@@ -240,3 +248,5 @@ After v0.2: open `http://server:8000/ui/` to configure everything.
 | Dashboard — review stats + recent history | v0.4 | ✅ Done |
 | docker-compose Valkey profile | v0.4 | ✅ Done |
 | Valkey distributed queue + cache backend | v0.9 | ✅ Done |
+| Kafka high-volume distributed queue backend | v0.10 | ✅ Done |
+| Code review / bug fixes (7 bugs fixed, see docs/CODE_REVIEW.md) | v0.10.1 | ✅ Done |

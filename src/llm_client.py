@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
@@ -163,8 +164,6 @@ class LLMClient:
             resp.raise_for_status()
             async for line in resp.aiter_lines():
                 if line.startswith("data: ") and line != "data: [DONE]":
-                    import json
-
                     chunk = json.loads(line[6:])
                     delta = chunk["choices"][0]["delta"].get("content", "")
                     if delta:

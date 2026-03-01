@@ -41,6 +41,12 @@ def make_webhook_router() -> APIRouter:
     ) -> JSONResponse:
         cfg = get_config()
 
+        # 0. Body size guard (prevent memory exhaustion from oversized payloads)
+        _MAX_BODY = 512 * 1024  # 512 KB — GitLab webhooks are well under 100 KB
+        content_length = request.headers.get("content-length")
+        if content_length and int(content_length) > _MAX_BODY:
+            raise HTTPException(status_code=413, detail="Request body too large")
+
         # 1. Auth
         if not _verify_token(x_gitlab_token, cfg.gitlab.webhook_secret):
             raise HTTPException(status_code=401, detail="Invalid webhook token")
@@ -76,11 +82,6 @@ def make_webhook_router() -> APIRouter:
         status = "accepted" if enqueued else "deduped_or_full"
 
         return JSONResponse({"status": status, "project_id": project_id, "mr_iid": mr_iid})
-
-    @router.get("/health")
-    async def health() -> JSONResponse:
-        q = _queue.status() if _queue else {}
-        return JSONResponse({"status": "ok", "queue": q})
 
     return router
 

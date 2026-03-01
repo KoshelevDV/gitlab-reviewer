@@ -237,8 +237,12 @@ def save_config(cfg: AppConfig, path: Path = CONFIG_PATH) -> None:
     tmp = path.with_name(".config.yml.tmp")
     # mode='json' converts Enum → str, datetime → str, etc.
     data: dict = cfg.model_dump(mode="json", exclude_none=False)
-    # Never write secrets to yaml
+    # Never write secrets to yaml — strip all env-only credentials
     data.get("gitlab", {}).pop("webhook_secret", None)
+    notif = data.get("notifications", {})
+    notif.pop("webhook_url", None)
+    notif.pop("telegram_bot_token", None)
+    notif.pop("telegram_chat_id", None)
     # Strip private attrs that appear as None (pydantic v2 private fields)
     data.pop("_gitlab_token", None)
     data.pop("_gitlab_password", None)

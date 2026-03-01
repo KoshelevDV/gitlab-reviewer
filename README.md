@@ -16,11 +16,13 @@ No data leaves your infrastructure. Everything configured through a **Web UI**.
 - 📝 Composable prompts — split by concern, assemble with `{{include:}}`
 - 🗂️ Review targets — select groups, projects, branches; auto-approve option
 - 🔒 Webhook HMAC verification
-- ⚡ Concurrent review queue — configurable `max_concurrent`, no overload
+- ⚡ **3 queue backends** — `memory` (default), `valkey` (multi-instance), `kafka` (high-volume)
 - 🔁 Dedup cache — no duplicate comments on identical diffs
 - 📜 Live logs in browser + review history
+- 💬 **Inline diff comments** — review posted as positioned discussions (v0.5+)
+- 🔔 **Notifications** — Slack, Telegram, or generic JSON webhook (v0.6+)
 - 🧪 Dry-run mode
-- 🐳 Docker Compose + Helm chart
+- 🐳 Docker Compose (profiles: `valkey`, `kafka`) + Helm chart
 - 💾 Config file as single source of truth — every UI action writes to `config.yml`
 
 ---
@@ -209,7 +211,7 @@ sanitize_untrusted(all GitLab fields)   ← strips control tokens, truncates
 ```
 Webhook → enqueue(project_id, mr_iid)
                │
-         QueueManager
+         QueueManager (memory | valkey | kafka)
          ├── dedup check (diff_hash cache) → skip if identical
          ├── max_queue_size limit
          └── Semaphore(max_concurrent)
@@ -219,8 +221,33 @@ Webhook → enqueue(project_id, mr_iid)
          LLM → GitLab comment → persist to history
 ```
 
-Simple mode (`backend: memory`): `asyncio.Queue` + `asyncio.Semaphore` — no external deps.  
-Distributed mode (`backend: valkey`): Valkey `LPUSH`/`BRPOP` — supports multiple service instances.
+### Queue backends
+
+| Backend | Use case | External dep | Docker profile |
+|---------|----------|-------------|----------------|
+| `memory` | Dev / single instance, &lt;50 MR/day | None | — |
+| `valkey` | Prod multi-instance, &lt;1000 MR/day | `redis>=4.2` | `valkey` |
+| `kafka` | High-volume, &gt;1000 MR/day, audit trail | `aiokafka>=0.10` | `kafka` |
+
+**memory** — `asyncio.Queue` + `asyncio.Semaphore`, zero deps.  
+**valkey** — `LPUSH`/`BRPOP` via `redis.asyncio`, globally unique job IDs via `INCR`, cross-instance latest-wins supersede.  
+**kafka** — `AIOKafkaProducer`/`Consumer`, partition key `project_id:mr_iid` (same MR → same partition → ordered), consumer group for load balancing.
+
+```bash
+# Start with Valkey
+docker compose --profile valkey up -d
+
+# Start with Kafka (KRaft, no ZooKeeper)
+docker compose --profile kafka up -d
+```
+
+```yaml
+# config.yml
+queue:
+  backend: valkey          # or kafka
+  valkey_url: redis://valkey:6379
+  # kafka_brokers: kafka:9092
+```
 
 ---
 
@@ -257,16 +284,14 @@ helm upgrade gitlab-reviewer ./helm/gitlab-reviewer --reuse-values
 
 ## Roadmap
 
-| Version | What's coming |
-|---------|--------------|
-| **v0.1** ✅ | Webhook, LLM, prompts, dedup, docker |
-| **v0.2** 📋 | Web UI: provider + model management, config editor |
-| **v0.3** 📋 | Live logs (WebSocket), review history (SQLite) |
-| **v0.4** 📋 | GitLab config UI: groups/projects/branches/auto-approve |
-| **v0.5** 📋 | Review queue + concurrency, queue status in UI |
-| **v0.6** 💡 | Valkey distributed queue + cache (multi-instance) |
+| Version | Status | What |
+|---------|--------|------|
+| **v0.1** | ✅ Done | Webhook, LLM, prompts, dedup, docker |
+| **v0.2–v0.8** | ✅ Done | Web UI, live logs, review history, auto-approve, inline comments, notifications |
+| **v0.9** | ✅ Done | Valkey distributed queue (redis.asyncio, LPUSH/BRPOP, cross-instance supersede) |
+| **v0.10** | ✅ Done | Kafka queue (aiokafka, KRaft, consumer groups, partition-keyed ordering) |
 
-See [ROADMAP.md](ROADMAP.md) for full details.
+See [ROADMAP.md](ROADMAP.md) and [docs/CODE_REVIEW.md](docs/CODE_REVIEW.md) for full details.
 
 ---
 
@@ -326,21 +351,25 @@ prompts:
 {{include: style}}   ← подтягивает prompts/system/style.md
 ```
 
-## Очередь и конкурентность
+## Очередь и конкурентность (RU)
 
 ```yaml
 queue:
-  backend: memory   # или valkey для нескольких инстансов
-  max_concurrent: 3 # сколько ревью одновременно
+  backend: memory    # или valkey / kafka
+  max_concurrent: 3  # сколько ревью одновременно
 ```
+
+| Бэкенд | Когда | Доп. зависимость |
+|--------|-------|-----------------|
+| `memory` | Dev / один инстанс | — |
+| `valkey` | Прод, несколько инстансов | `pip install redis` |
+| `kafka` | Высокая нагрузка (>1000 MR/день) | `pip install aiokafka` |
 
 ## Дорожная карта
 
-| Версия | Что появится |
-|--------|-------------|
-| v0.1 ✅ | Webhook, LLM, промпты, docker |
-| v0.2 📋 | Web UI: провайдеры, модели |
-| v0.3 📋 | Live логи, история ревью |
-| v0.4 📋 | Настройка GitLab через UI |
-| v0.5 📋 | Очередь, конкурентность |
-| v0.6 💡 | Valkey (мультиинстанс) |
+| Версия | Статус | Что сделано |
+|--------|--------|-------------|
+| v0.1 | ✅ Done | Webhook, LLM, промпты, docker |
+| v0.2–0.8 | ✅ Done | Web UI, логи, история, авто-апрув, уведомления |
+| v0.9 | ✅ Done | Valkey распределённая очередь |
+| v0.10 | ✅ Done | Kafka очередь (KRaft, aiokafka) |

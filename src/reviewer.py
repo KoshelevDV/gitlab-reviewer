@@ -21,6 +21,7 @@ import fnmatch
 import logging
 import re
 from datetime import UTC, datetime
+from typing import Protocol, runtime_checkable
 
 from . import metrics as _metrics
 from .config import AppConfig, ReviewTarget, get_config
@@ -29,7 +30,21 @@ from .gitlab_client import FileDiff, GitLabClient, MRInfo
 from .llm_client import LLMClient
 from .notifier import notify as _dispatch_notify
 from .prompt_engine import PromptEngine
-from .queue_manager import QueueManager, ReviewJob
+from .queue_manager import ReviewJob
+
+
+@runtime_checkable
+class QueueLike(Protocol):
+    """Duck-type interface shared by QueueManager, ValkeyQueueManager, KafkaQueueManager."""
+
+    async def enqueue(self, job: ReviewJob) -> bool: ...
+
+    def is_already_seen(self, project_id: int | str, mr_iid: int, diff_hash: str) -> bool: ...
+
+    def mark_seen(self, project_id: int | str, mr_iid: int, diff_hash: str) -> None: ...
+
+    def is_superseded(self, job: ReviewJob) -> bool: ...
+
 
 logger = logging.getLogger(__name__)
 
@@ -129,7 +144,7 @@ def _filter_diffs(
     return kept, skipped
 
 
-async def _delayed_requeue(queue: QueueManager, job: ReviewJob, delay_secs: float) -> None:
+async def _delayed_requeue(queue: QueueLike, job: ReviewJob, delay_secs: float) -> None:
     """
     Sleep for *delay_secs* then enqueue a fresh job for the same MR.
 
@@ -163,9 +178,17 @@ async def _notify(record: ReviewRecord, cfg: AppConfig) -> None:
 
 
 class Reviewer:
-    def __init__(self, prompts: PromptEngine, queue: QueueManager) -> None:
+    def __init__(self, prompts: PromptEngine, queue: QueueLike) -> None:
         self._prompts = prompts
         self._queue = queue
+        # Tracked delayed requeue tasks — cancelled on shutdown via cancel_pending()
+        self._requeue_tasks: set[asyncio.Task] = set()
+
+    def cancel_pending(self) -> None:
+        """Cancel all in-flight delayed requeue tasks (call at shutdown)."""
+        for task in self._requeue_tasks:
+            task.cancel()
+        self._requeue_tasks.clear()
 
     # ------------------------------------------------------------------
     # Called by QueueManager worker
@@ -303,7 +326,9 @@ class Reviewer:
                             job.mr_iid,
                             remaining_secs,
                         )
-                        asyncio.create_task(_delayed_requeue(self._queue, job, remaining_secs))
+                        _t = asyncio.create_task(_delayed_requeue(self._queue, job, remaining_secs))
+                        self._requeue_tasks.add(_t)
+                        _t.add_done_callback(self._requeue_tasks.discard)
                         _metrics.cooldown_reschedules_total.inc()
                     record.status = "skipped"
                     record.skip_reason = reason
@@ -509,7 +534,7 @@ class Reviewer:
 
 
 def _make_gitlab_client(cfg: AppConfig) -> GitLabClient:
-    return GitLabClient(cfg.gitlab.url, cfg.gitlab_token)
+    return GitLabClient(cfg.gitlab.url, cfg.gitlab_token, tls_verify=cfg.gitlab.tls_verify)
 
 
 def _make_llm_client(cfg: AppConfig) -> LLMClient:

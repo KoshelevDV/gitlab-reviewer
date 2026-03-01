@@ -234,17 +234,17 @@ class Database:
         the last `hours` hours that have a non-empty diff_hash.
         Used to restore the in-memory dedup cache on startup.
         """
-        cutoff = datetime.utcnow() - timedelta(hours=hours)
-        async with aiosqlite.connect(self._path) as db:
-            cur = await db.execute(
-                """
-                SELECT project_id, mr_iid, diff_hash
-                FROM reviews
-                WHERE diff_hash != '' AND diff_hash IS NOT NULL
-                  AND created_at > ?
-                """,
-                (cutoff.isoformat(),),
-            )
+        assert self._db is not None
+        cutoff = datetime.now(UTC) - timedelta(hours=hours)
+        async with self._db.execute(
+            """
+            SELECT project_id, mr_iid, diff_hash
+            FROM reviews
+            WHERE diff_hash != '' AND diff_hash IS NOT NULL
+              AND created_at > ?
+            """,
+            (cutoff.isoformat(),),
+        ) as cur:
             rows = await cur.fetchall()
         return [(r[0], r[1], r[2]) for r in rows]
 

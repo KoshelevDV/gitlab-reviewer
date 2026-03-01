@@ -100,6 +100,7 @@ def create_app() -> FastAPI:
         yield
         # Shutdown
         logger.info("Shutting down — draining queue...")
+        reviewer.cancel_pending()
         await queue.drain()
         await db.close()
         logger.info("Shutdown complete")

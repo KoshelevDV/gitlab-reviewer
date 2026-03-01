@@ -104,7 +104,12 @@ class TestHealthEndpoint:
         assert r.status_code == 200
         assert r.json()["status"] == "ok"
 
-    async def test_health_includes_queue(self, app):
+    async def test_health_includes_queue_check(self, app):
         r = await app.get("/health")
         data = r.json()
-        assert "queue" in data
+        assert "checks" in data
+        assert "queue" in data["checks"]
+
+    async def test_health_includes_db_check(self, app):
+        r = await app.get("/health")
+        assert r.json()["checks"]["db"]["status"] == "ok"

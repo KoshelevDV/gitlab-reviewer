@@ -95,6 +95,9 @@ async def app(tmp_path, prompts_dir, db):
 
     from src.api.config import router as config_router
     from src.api.gitlab_api import router as gitlab_router
+    from src.api.health import router as health_router
+    from src.api.health import set_database as health_set_db
+    from src.api.health import set_queue_manager as health_set_queue
     from src.api.logs_api import router as logs_router
     from src.api.logs_api import set_log_buffer
     from src.api.providers import router as providers_router
@@ -116,6 +119,8 @@ async def app(tmp_path, prompts_dir, db):
     # Wire singletons BEFORE creating the app (no lifespan dependency)
     set_database(db)
     reviewer_set_db(db)
+    health_set_db(db)
+    health_set_queue(q)
     set_queue_manager(q)
     reviews_set_queue(q)
     wh_set_queue(q)
@@ -123,6 +128,7 @@ async def app(tmp_path, prompts_dir, db):
 
     application = FastAPI()
     application.include_router(make_webhook_router())
+    application.include_router(health_router)  # proper health check (DB + queue + config)
     application.include_router(config_router)
     application.include_router(providers_router)
     application.include_router(targets_router)
