@@ -266,12 +266,12 @@ if t.type == "group" and t.id == project_id:
 | WARN-1 | 🟡 Medium | prompt_engine.py | Кэш промптов не инвалидируется | ✅ Fixed (Q-4) |
 | WARN-2 | 🟡 Medium | queue_api.py | /drain необратим | ✅ Fixed (Q-3: /queue/start) |
 | WARN-3 | 🟡 Medium | reviewer.py | Тип queue: QueueManager неверный | ✅ Fixed (QueueLike Protocol) |
-| WARN-4 | 🟡 Medium | gitlab_client.py | Sequential requests в test_connection | 🔲 Open |
+| WARN-4 | 🟡 Medium | gitlab_client.py | Sequential requests в test_connection | ✅ Fixed (asyncio.gather) |
 | WARN-5 | 🟡 Medium | webhook.py | Слабая валидация project_id/mr_iid | ✅ Fixed |
-| WARN-6 | 🟡 Medium | llm_client.py | KeyError fallback слишком широкий | 🔲 Open |
-| WARN-7 | 🟢 Low | llm_client.py | import json внутри генератора | 🔲 Open |
-| STYLE-1 | 🟢 Low | backends/* | Дублирующийся dedup-код | 🔲 Open |
+| WARN-6 | 🟡 Medium | llm_client.py | KeyError fallback слишком широкий | ✅ Fixed (split except) |
+| WARN-7 | 🟢 Low | llm_client.py | import json внутри генератора | ✅ Fixed (module-level) |
+| STYLE-1 | 🟢 Low | backends/* | Дублирующийся dedup-код | ✅ Fixed (DedupCache) |
 | STYLE-2 | 🟢 Low | reviewer.py | group target matching не работает | ✅ Fixed (Q-5) |
 | STYLE-3 | 🟢 Low | — | Нет retry на HTTP-ошибки | ✅ Fixed (Q-7 tenacity) |
 
-**Итого:** 13/17 закрыто · 4 открыто (WARN-4, WARN-6, WARN-7, STYLE-1)
+**Итого:** 17/17 закрыто ✅

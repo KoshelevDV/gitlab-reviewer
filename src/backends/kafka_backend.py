@@ -27,6 +27,7 @@ from typing import TYPE_CHECKING, Any
 
 from .. import metrics as _metrics
 from ..queue_manager import ReviewJob
+from .dedup import DedupCache
 
 if TYPE_CHECKING:
     from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
@@ -71,8 +72,7 @@ class KafkaQueueManager:
         self._done = 0
         self._errors = 0
 
-        # In-memory dedup: (project_id, mr_iid, diff_hash) → monotonic ts
-        self._seen: dict[tuple, float] = {}
+        self._dedup = DedupCache()
 
         # Latest job timestamp per MR for supersede (in-memory, per instance)
         # Works because same-MR events go to the same partition → same consumer
@@ -105,9 +105,7 @@ class KafkaQueueManager:
         Publish a review job to Kafka.
         Returns True if accepted, False if deduped.
         """
-        # 1. In-memory dedup
-        dedup_key = (str(job.project_id), job.mr_iid, job.diff_hash)
-        if job.diff_hash and self._is_seen(dedup_key):
+        if self._dedup.is_seen(job.project_id, job.mr_iid, job.diff_hash):
             logger.info(
                 "Dedup (kafka): skipping project=%s MR!%d (diff hash already seen)",
                 job.project_id,
@@ -209,26 +207,13 @@ class KafkaQueueManager:
 
     async def load_seen_from_db(self, db: Database) -> int:  # type: ignore[name-defined]
         """Seed in-memory dedup cache from recent DB records."""
-        try:
-            rows = await db.list_diff_hashes(hours=168)
-            now = time.monotonic()
-            for project_id, mr_iid, diff_hash in rows:
-                key = (str(project_id), mr_iid, diff_hash)
-                self._seen.setdefault(key, now)
-            logger.info("Kafka dedup cache seeded from DB: %d hashes", len(rows))
-            return len(rows)
-        except Exception:
-            logger.exception("Failed to seed Kafka dedup cache from DB")
-            return 0
+        return await self._dedup.load_from_db(db)
 
     def is_already_seen(self, project_id: int | str, mr_iid: int, diff_hash: str) -> bool:
-        if not diff_hash:
-            return False
-        return self._is_seen((str(project_id), mr_iid, diff_hash))
+        return self._dedup.is_seen(project_id, mr_iid, diff_hash)
 
     def mark_seen(self, project_id: int | str, mr_iid: int, diff_hash: str) -> None:
-        key = (str(project_id), mr_iid, diff_hash)
-        self._seen[key] = time.monotonic()
+        self._dedup.mark(project_id, mr_iid, diff_hash)
 
     def is_superseded(self, job: ReviewJob) -> bool:
         """
@@ -243,15 +228,6 @@ class KafkaQueueManager:
     # ------------------------------------------------------------------
     # Internal
     # ------------------------------------------------------------------
-
-    def _is_seen(self, key: tuple) -> bool:
-        ts = self._seen.get(key)
-        if ts is None:
-            return False
-        if time.monotonic() - ts > self._cache_ttl:
-            del self._seen[key]
-            return False
-        return True
 
     async def _worker(
         self,

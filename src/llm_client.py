@@ -130,9 +130,19 @@ class LLMClient:
                 resp.raise_for_status()
                 data = resp.json()
                 return data["choices"][0]["message"]["content"]
-            except (httpx.HTTPStatusError, KeyError):
-                # Fall back to native ollama /api/chat
-                logger.debug("OpenAI-compat endpoint failed, trying ollama native /api/chat")
+            except httpx.HTTPStatusError as _http_err:
+                # Fall back to native ollama /api/chat only on HTTP-level errors
+                # (e.g. 404 when ollama < 0.1.24 doesn't expose /v1/ yet)
+                logger.debug(
+                    "OpenAI-compat endpoint HTTP error (%s), trying ollama native /api/chat",
+                    _http_err.response.status_code,
+                )
+            except (KeyError, TypeError) as _fmt_err:
+                # Response came back 200 but in unexpected format — log and fall back
+                logger.warning(
+                    "OpenAI-compat response format unexpected (%s), trying ollama native",
+                    _fmt_err,
+                )
 
             ollama_payload = {
                 "model": self._model,

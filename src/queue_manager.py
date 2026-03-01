@@ -12,12 +12,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import time
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from . import metrics as _metrics
+from .backends.dedup import DedupCache
 
 if TYPE_CHECKING:
     from .db import Database
@@ -46,9 +46,7 @@ class QueueManager:
         self._job_counter = 0
         self._workers: list[asyncio.Task] = []
         self._review_fn: Callable[[ReviewJob], Coroutine] | None = None
-        # Simple in-memory dedup: (project_id, mr_iid, diff_hash) -> monotonic ts
-        self._seen: dict[tuple, float] = {}
-        self._dedup_ttl = 3600.0
+        self._dedup = DedupCache()
         # Latest-wins debounce: (project_id, mr_iid) -> latest job.id
         # Used to supersede older queued jobs when a newer push arrives for the same MR
         self._latest_job_id: dict[tuple[str, int], int] = {}
@@ -62,8 +60,7 @@ class QueueManager:
         Add a job to the queue.
         Returns True if enqueued, False if deduped or queue full.
         """
-        key = (str(job.project_id), job.mr_iid, job.diff_hash)
-        if job.diff_hash and self._is_seen(key):
+        if self._dedup.is_seen(job.project_id, job.mr_iid, job.diff_hash):
             logger.info(
                 "Dedup: skipping project=%s MR!%d (diff hash already seen)",
                 job.project_id,
@@ -192,39 +189,13 @@ class QueueManager:
                     _metrics.queue_active.set(self._active)
                     self._queue.task_done()
 
-    def _is_seen(self, key: tuple) -> bool:
-        ts = self._seen.get(key)
-        if ts is None:
-            return False
-        if time.monotonic() - ts > self._dedup_ttl:
-            del self._seen[key]
-            return False
-        return True
-
     async def load_seen_from_db(self, db: Database) -> int:  # type: ignore[name-defined]
-        """
-        Restore dedup cache from the last 7 days of DB records on startup.
-        Prevents re-reviewing the same MR diff after a service restart.
-        Returns the number of hashes loaded.
-        """
-        try:
-            rows = await db.list_diff_hashes(hours=168)
-            now = time.monotonic()
-            for project_id, mr_iid, diff_hash in rows:
-                key = (str(project_id), mr_iid, diff_hash)
-                self._seen.setdefault(key, now)
-            logger.info("Dedup cache restored: %d hashes loaded from DB", len(rows))
-            return len(rows)
-        except Exception:
-            logger.exception("Failed to load seen hashes from DB")
-            return 0
+        """Restore dedup cache from recent DB records. Returns number of hashes loaded."""
+        return await self._dedup.load_from_db(db)
 
     def is_already_seen(self, project_id: int | str, mr_iid: int, diff_hash: str) -> bool:
         """Return True if this (project, MR, diff) has been reviewed recently."""
-        if not diff_hash:
-            return False
-        key = (str(project_id), mr_iid, diff_hash)
-        return self._is_seen(key)
+        return self._dedup.is_seen(project_id, mr_iid, diff_hash)
 
     def is_superseded(self, job: ReviewJob) -> bool:
         """
@@ -238,5 +209,4 @@ class QueueManager:
         return job.id < latest_id
 
     def mark_seen(self, project_id: int | str, mr_iid: int, diff_hash: str) -> None:
-        key = (str(project_id), mr_iid, diff_hash)
-        self._seen[key] = time.monotonic()
+        self._dedup.mark(project_id, mr_iid, diff_hash)

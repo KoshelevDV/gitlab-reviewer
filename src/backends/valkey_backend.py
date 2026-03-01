@@ -17,12 +17,12 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import time
 from collections.abc import Callable, Coroutine
 from typing import TYPE_CHECKING, Any
 
 from .. import metrics as _metrics
 from ..queue_manager import ReviewJob
+from .dedup import DedupCache
 
 if TYPE_CHECKING:
     from redis.asyncio import Redis
@@ -72,8 +72,7 @@ class ValkeyQueueManager:
         self._done = 0
         self._errors = 0
 
-        # In-memory dedup cache: (project_id, mr_iid, diff_hash) → monotonic ts
-        self._seen: dict[tuple, float] = {}
+        self._dedup = DedupCache()
 
         # Local fallback for is_superseded (sync callers)
         self._latest_job_id: dict[tuple[str, int], int] = {}
@@ -98,9 +97,7 @@ class ValkeyQueueManager:
         Enqueue a review job.
         Returns True if accepted, False if deduped or queue full.
         """
-        # 1. In-memory dedup check
-        dedup_key = (str(job.project_id), job.mr_iid, job.diff_hash)
-        if job.diff_hash and self._is_seen(dedup_key):
+        if self._dedup.is_seen(job.project_id, job.mr_iid, job.diff_hash):
             logger.info(
                 "Dedup (valkey): skipping project=%s MR!%d (diff hash already seen)",
                 job.project_id,
@@ -210,32 +207,16 @@ class ValkeyQueueManager:
         }
 
     async def load_seen_from_db(self, db: Database) -> int:  # type: ignore[name-defined]
-        """
-        Seed in-memory dedup cache from recent DB records.
-        Prevents re-review of unchanged MRs after a service restart.
-        """
-        try:
-            rows = await db.list_diff_hashes(hours=168)
-            now = time.monotonic()
-            for project_id, mr_iid, diff_hash in rows:
-                key = (str(project_id), mr_iid, diff_hash)
-                self._seen.setdefault(key, now)
-            logger.info("Valkey dedup cache seeded from DB: %d hashes", len(rows))
-            return len(rows)
-        except Exception:
-            logger.exception("Failed to seed Valkey dedup cache from DB")
-            return 0
+        """Seed in-memory dedup cache from recent DB records."""
+        return await self._dedup.load_from_db(db)
 
     def is_already_seen(self, project_id: int | str, mr_iid: int, diff_hash: str) -> bool:
-        """Sync check — uses in-memory cache (populated at startup + mark_seen)."""
-        if not diff_hash:
-            return False
-        return self._is_seen((str(project_id), mr_iid, diff_hash))
+        """Sync check — uses in-memory DedupCache (populated at startup + mark_seen)."""
+        return self._dedup.is_seen(project_id, mr_iid, diff_hash)
 
     def mark_seen(self, project_id: int | str, mr_iid: int, diff_hash: str) -> None:
         """Record that this (project, MR, diff) was just reviewed."""
-        key = (str(project_id), mr_iid, diff_hash)
-        self._seen[key] = time.monotonic()
+        self._dedup.mark(project_id, mr_iid, diff_hash)
 
     def is_superseded(self, job: ReviewJob) -> bool:
         """
@@ -251,15 +232,6 @@ class ValkeyQueueManager:
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
-
-    def _is_seen(self, key: tuple) -> bool:
-        ts = self._seen.get(key)
-        if ts is None:
-            return False
-        if time.monotonic() - ts > self._cache_ttl:
-            del self._seen[key]
-            return False
-        return True
 
     async def _is_superseded_async(self, r: Redis, job: ReviewJob) -> bool:
         """Cross-instance supersede check via Redis."""
