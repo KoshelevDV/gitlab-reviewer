@@ -152,6 +152,11 @@ class QueueManager:
             "errors": self._errors,
             "max_concurrent": self._max_concurrent,
             "queue_maxsize": self._queue.maxsize,
+            # Which MRs are currently being reviewed by workers
+            "processing": [
+                {"project_id": pid, "mr_iid": iid}
+                for pid, iid in self._in_flight
+            ],
         }
 
     # ------------------------------------------------------------------

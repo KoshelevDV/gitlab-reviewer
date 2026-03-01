@@ -454,7 +454,7 @@ class TestIncrementalReview:
     async def test_incremental_diff_used_when_previous_version_exists(
         self, reviewer, mock_gitlab, mock_llm, db, cfg_with_target
     ):
-        """When a previous review exists with a lower version_id, get_version_diffs is called."""
+        """When a previous review exists with a lower version_id, compare_commits is called."""
         from src.db import ReviewRecord
         from src.gitlab_client import FileDiff
 
@@ -468,15 +468,19 @@ class TestIncrementalReview:
         )
         await db.save_review(rec)
 
-        # Current version is 2
+        # get_mr_versions returns both versions so reviewer can find prev sha
         mock_gitlab.get_mr_versions = AsyncMock(
-            return_value=[{"id": 2, "head_commit_sha": "new", "base_commit_sha": "b",
-                           "start_commit_sha": "s"}]
+            return_value=[
+                {"id": 2, "head_commit_sha": "sha_new", "base_commit_sha": "b",
+                 "start_commit_sha": "s"},
+                {"id": 1, "head_commit_sha": "sha_old", "base_commit_sha": "b",
+                 "start_commit_sha": "s"},
+            ]
         )
         incremental_diffs = [
             FileDiff("changed.py", "changed.py", "+new line", False, False, False)
         ]
-        mock_gitlab.get_version_diffs = AsyncMock(return_value=incremental_diffs)
+        mock_gitlab.compare_commits = AsyncMock(return_value=incremental_diffs)
 
         set_database(db)
         with (
@@ -487,10 +491,11 @@ class TestIncrementalReview:
             job = ReviewJob(project_id=42, mr_iid=7)
             await reviewer.review_job(job)
 
-        # Verify incremental diffs were used
-        mock_gitlab.get_version_diffs.assert_called_once()
-        call_kwargs = mock_gitlab.get_version_diffs.call_args
-        assert call_kwargs.kwargs.get("start_version_id") == 1
+        # Verify compare_commits was used with the correct SHAs
+        mock_gitlab.compare_commits.assert_called_once()
+        call_args = mock_gitlab.compare_commits.call_args
+        assert call_args.args[1] == "sha_old"  # from_sha = previous version HEAD
+        assert call_args.args[2] == "sha_new"  # to_sha = current version HEAD
 
         # Verify the new review has version_id=2
         records, _ = await db.list_reviews()

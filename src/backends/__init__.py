@@ -10,10 +10,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ..queue_manager import QueueManager
-
 if TYPE_CHECKING:
     from ..config import AppConfig
+    from ..queue_manager import QueueManager
 
 
 def create_queue_manager(cfg: AppConfig) -> QueueManager:
@@ -49,6 +48,8 @@ def create_queue_manager(cfg: AppConfig) -> QueueManager:
             max_size=cfg.queue.max_queue_size,
             cache_ttl=cfg.cache.ttl,
         )
+
+    from ..queue_manager import QueueManager  # lazy — avoids circular import
 
     return QueueManager(
         max_concurrent=cfg.queue.max_concurrent,

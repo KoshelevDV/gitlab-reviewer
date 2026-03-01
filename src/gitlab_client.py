@@ -253,6 +253,10 @@ class GitLabClient:
 
         If start_version_id is provided, returns only the incremental diff
         between that version and version_id (files changed since last review).
+
+        NOTE: the GitLab versions API computes diffs relative to the target
+        branch — for new files this may show the full content even when
+        start_version_id is set. Prefer compare_commits() for true deltas.
         """
         pid = quote(str(project_id), safe="")
         params: dict = {}
@@ -279,6 +283,43 @@ class GitLabClient:
             )
             if len(diffs) >= max_files:
                 logger.warning("Hit max_files=%d limit in version diff", max_files)
+                break
+        return diffs
+
+    async def compare_commits(
+        self,
+        project_id: int | str,
+        from_sha: str,
+        to_sha: str,
+        max_files: int = 50,
+    ) -> list[FileDiff]:
+        """Return the true delta between two commits using repository/compare.
+
+        Unlike the MR Versions API (which shows diffs relative to the target
+        branch), this always returns the exact lines added/removed between
+        from_sha and to_sha — correct for incremental MR reviews.
+        """
+        pid = quote(str(project_id), safe="")
+        resp = await self._client.get(
+            f"{self._base}/api/v4/projects/{pid}/repository/compare",
+            params={"from": from_sha, "to": to_sha, "unidiff": True},
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        diffs: list[FileDiff] = []
+        for item in data.get("diffs", []):
+            diffs.append(
+                FileDiff(
+                    old_path=item.get("old_path", ""),
+                    new_path=item.get("new_path", ""),
+                    diff=item.get("diff", ""),
+                    new_file=item.get("new_file", False),
+                    deleted_file=item.get("deleted_file", False),
+                    renamed_file=item.get("renamed_file", False),
+                )
+            )
+            if len(diffs) >= max_files:
+                logger.warning("Hit max_files=%d limit in compare_commits", max_files)
                 break
         return diffs
 

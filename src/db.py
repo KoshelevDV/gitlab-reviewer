@@ -162,6 +162,38 @@ class Database:
         )
         return rec.id
 
+    async def update_review(self, rec: ReviewRecord) -> None:
+        """Update all fields of an existing review record by id."""
+        assert self._db is not None
+        if not rec.id:
+            return
+        await self._db.execute(
+            """UPDATE reviews SET
+               status=?, skip_reason=?, review_text=?, diff_hash=?,
+               inline_count=?, risk_score=?, mr_version_id=?,
+               mr_title=?, mr_url=?, author=?, source_branch=?,
+               target_branch=?, auto_approved=?, prompt_names=?
+               WHERE id=?""",
+            (
+                rec.status,
+                rec.skip_reason,
+                rec.review_text,
+                rec.diff_hash,
+                rec.inline_count,
+                rec.risk_score,
+                rec.mr_version_id,
+                rec.mr_title,
+                rec.mr_url,
+                rec.author,
+                rec.source_branch,
+                rec.target_branch,
+                int(rec.auto_approved),
+                json.dumps(rec.prompt_names),
+                rec.id,
+            ),
+        )
+        await self._db.commit()
+
     # ------------------------------------------------------------------
     # Read
     # ------------------------------------------------------------------
@@ -269,6 +301,7 @@ class Database:
         async with self._db.execute(
             """SELECT created_at FROM reviews
                WHERE project_id = ? AND mr_iid = ?
+               AND status NOT IN ('processing', 'skipped')
                ORDER BY created_at DESC LIMIT 1""",
             (str(project_id), mr_iid),
         ) as cur:

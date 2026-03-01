@@ -218,10 +218,14 @@ class Reviewer:
         record = ReviewRecord(
             project_id=str(job.project_id),
             mr_iid=job.mr_iid,
-            status="error",
+            status="processing",
         )
         gitlab: GitLabClient | None = None
         llm: LLMClient | None = None
+
+        # Save early so the review appears as "processing" in the list
+        if _db is not None:
+            await _db.save_review(record)
 
         try:
             gitlab = _make_gitlab_client(cfg)
@@ -237,8 +241,11 @@ class Reviewer:
             if llm is not None:
                 await llm.aclose()
             if _db is not None:
-                await _db.save_review(record)
-                logger.debug("Review record saved id=%d", record.id)
+                if record.id:
+                    await _db.update_review(record)
+                else:
+                    await _db.save_review(record)
+                logger.debug("Review record saved id=%d status=%s", record.id, record.status)
             _metrics.record_review(
                 status=record.status,
                 inline_count=record.inline_count,
@@ -394,20 +401,30 @@ class Reviewer:
                     )
                     last_version_id = _prev_ver if _prev_ver is not None else 0
                 if last_version_id and last_version_id < current_version_id:
-                    # Incremental: only review what changed since last review
-                    diffs = await gitlab.get_version_diffs(
-                        job.project_id,
-                        job.mr_iid,
-                        current_version_id,
-                        start_version_id=last_version_id,
-                        max_files=effective_max_files,
+                    # Incremental: use repository/compare for the true delta between
+                    # the two version HEAD commits (versions API shows diffs vs target
+                    # branch, which causes full-file repeats for new files).
+                    prev_version = next(
+                        (v for v in versions if int(v.get("id") or 0) == last_version_id),
+                        None,
                     )
+                    current_version_obj = versions[0]
+                    prev_sha = (prev_version or {}).get("head_commit_sha", "")
+                    current_sha = current_version_obj.get("head_commit_sha", "")
+                    if prev_sha and current_sha and prev_sha != current_sha:
+                        diffs = await gitlab.compare_commits(
+                            job.project_id,
+                            prev_sha,
+                            current_sha,
+                            max_files=effective_max_files,
+                        )
                     if diffs:
                         incremental = True
                         logger.info(
-                            "Incremental review: version %d → %d (%d files changed) "
+                            "Incremental review: version %d → %d (%s..%s, %d files) "
                             "project=%s MR!%d",
-                            last_version_id, current_version_id, len(diffs),
+                            last_version_id, current_version_id,
+                            prev_sha[:8], current_sha[:8], len(diffs),
                             job.project_id, job.mr_iid,
                         )
         except Exception:
