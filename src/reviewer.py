@@ -21,14 +21,17 @@ import fnmatch
 import logging
 import re
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 from . import metrics as _metrics
 from .config import AppConfig, ReviewTarget, get_config
+from .context_builder import MRContext, get_agents_md, get_docs_context, get_dynamic_context, get_security_baseline, get_task_context
 from .db import Database, ReviewRecord
 from .gitlab_client import FileDiff, GitLabClient, MRInfo
 from .llm_client import LLMClient
 from .notifier import notify as _dispatch_notify
+from .pipeline import PipelineManager, RoleResult, ReviewRole
 from .prompt_engine import PromptEngine
 from .queue_manager import ReviewJob
 
@@ -247,6 +250,177 @@ class Reviewer:
                 else:
                     await _db.save_review(record)
                 logger.debug("Review record saved id=%d status=%s", record.id, record.status)
+            _metrics.record_review(
+                status=record.status,
+                inline_count=record.inline_count,
+                auto_approved=record.auto_approved,
+            )
+            await _notify(record, cfg)
+
+    async def review_job_v2(self, job: ReviewJob) -> None:
+        """
+        v2 pipeline review:
+          1. Collect MRContext via context_builder
+          2. Run PipelineManager with parallel roles
+          3. Build composite comment from RoleResult[]
+          4. Post to GitLab
+
+        Activated when config.review.pipeline_v2 = true.
+        """
+        cfg = get_config()
+        record = ReviewRecord(
+            project_id=str(job.project_id),
+            mr_iid=job.mr_iid,
+            status="processing",
+        )
+        gitlab: GitLabClient | None = None
+        llm: LLMClient | None = None
+
+        if _db is not None:
+            await _db.save_review(record)
+
+        try:
+            gitlab = _make_gitlab_client(cfg)
+            llm = _make_llm_client(cfg)
+
+            # ----------------------------------------------------------------
+            # 1. Fetch MR basics
+            # ----------------------------------------------------------------
+            mr = await gitlab.get_mr(job.project_id, job.mr_iid)
+            record.mr_title = mr.title
+            record.mr_url = mr.web_url
+            record.author = mr.author
+            record.source_branch = mr.source_branch
+            record.target_branch = mr.target_branch
+
+            if mr.is_draft:
+                record.status = "skipped"
+                record.skip_reason = "draft MR"
+                return
+
+            # ----------------------------------------------------------------
+            # 2. Fetch diffs
+            # ----------------------------------------------------------------
+            effective_max_files = cfg.max_files_per_review
+            target = _find_target(cfg, str(job.project_id))
+            if target and target.max_files_per_review is not None:
+                effective_max_files = target.max_files_per_review
+
+            diffs = await gitlab.get_diffs(
+                job.project_id, job.mr_iid, max_files=effective_max_files
+            )
+            if not diffs:
+                record.status = "skipped"
+                record.skip_reason = "no diffs found"
+                return
+
+            target_file_exclude = target.file_exclude if target else []
+            diffs, excluded_paths = _filter_diffs(diffs, cfg.file_exclude, target_file_exclude)
+            if not diffs:
+                record.status = "skipped"
+                record.skip_reason = (
+                    f"all {len(excluded_paths)} changed file(s) matched exclusion filters"
+                )
+                return
+
+            # ----------------------------------------------------------------
+            # 3. Build MRContext
+            # ----------------------------------------------------------------
+            review_cfg = cfg.review
+            token_budget = review_cfg.context_token_budget
+
+            # Security: trusted context MUST come from target_branch (main/master).
+            # Only maintainers can push there, so AGENTS.md/docs/ are not attacker-controlled.
+            # source_branch is used only for dynamic context (full file content of changed files).
+            trusted_ref = mr.target_branch   # main/master — only maintainers push here
+            source_ref = mr.source_branch    # PR author's branch — untrusted for static context
+
+            p = PromptEngine(prompts_dir=Path(review_cfg.prompts_dir))
+
+            agents_md, docs_ctx, security_baseline, task_ctx, dynamic_ctx = await asyncio.gather(
+                get_agents_md(gitlab, job.project_id, trusted_ref),
+                get_docs_context(gitlab, job.project_id, trusted_ref, token_budget=token_budget),
+                get_security_baseline(gitlab, job.project_id, trusted_ref),
+                get_task_context(gitlab, job.project_id, job.mr_iid, sanitize=p.sanitize_untrusted),
+                get_dynamic_context(
+                    gitlab,
+                    job.project_id,
+                    job.mr_iid,
+                    diffs,
+                    max_files=min(5, effective_max_files),
+                    token_budget=token_budget,
+                ),
+            )
+
+            project_context = "\n\n".join(filter(None, [agents_md, docs_ctx]))
+            raw_diff = _combine_diffs(diffs, annotate=True)
+            max_diff_chars = cfg.model.context_size or 32_000
+            safe_diff = p.sanitize_untrusted(raw_diff, max_chars=max_diff_chars)
+
+            ctx = MRContext(
+                project_context=project_context,
+                task_context=task_ctx,
+                dynamic_context=dynamic_ctx,
+                security_baseline=security_baseline,
+                diff=safe_diff,
+                arch_decisions=docs_ctx,
+            )
+
+            # ----------------------------------------------------------------
+            # 4. Detect stack & run pipeline
+            # ----------------------------------------------------------------
+            stack = PipelineManager.detect_stack(agents_md) if agents_md else "python"
+            pm = PipelineManager(
+                llm_client=llm,
+                prompts_dir=review_cfg.prompts_dir,  # type: ignore[arg-type]
+                stack=stack,
+            )
+            logger.info(
+                "v2 pipeline: detected stack=%s for project=%s MR!%d",
+                stack,
+                job.project_id,
+                job.mr_iid,
+            )
+
+            results = await pm.run(ctx)
+
+            # ----------------------------------------------------------------
+            # 5. Build composite comment
+            # ----------------------------------------------------------------
+            reviewer_result = next(
+                (r for r in results if r.role == ReviewRole.REVIEWER), None
+            )
+            parallel_results = [r for r in results if r.role != ReviewRole.REVIEWER]
+
+            risk_score = _compute_risk_score(mr, diffs, reviewer_result.findings if reviewer_result else "")
+            record.risk_score = risk_score
+            record.review_text = reviewer_result.findings if reviewer_result else ""
+
+            comment = _build_v2_comment(
+                mr=mr,
+                parallel_results=parallel_results,
+                reviewer_result=reviewer_result,
+                risk_score=risk_score,
+            )
+
+            await gitlab.post_mr_note(job.project_id, job.mr_iid, comment)
+            record.status = "posted"
+            logger.info("v2 review posted: project=%s MR!%d", job.project_id, job.mr_iid)
+
+        except Exception as exc:
+            logger.exception("v2 review failed project=%s MR!%d", job.project_id, job.mr_iid)
+            record.status = "error"
+            record.skip_reason = str(exc)
+        finally:
+            if gitlab is not None:
+                await gitlab.aclose()
+            if llm is not None:
+                await llm.aclose()
+            if _db is not None:
+                if record.id:
+                    await _db.update_review(record)
+                else:
+                    await _db.save_review(record)
             _metrics.record_review(
                 status=record.status,
                 inline_count=record.inline_count,
@@ -966,6 +1140,68 @@ def _format_summary_comment(summary_text: str, inline_count: int) -> str:
         f"---\n"
         f"*Generated by gitlab-reviewer · {ts}*"
     )
+
+
+def _build_v2_comment(
+    mr: "MRInfo",
+    parallel_results: "list[RoleResult]",
+    reviewer_result: "RoleResult | None",
+    risk_score: int,
+) -> str:
+    """Build the composite GitLab comment for v2 pipeline results."""
+    from datetime import datetime
+
+    ts = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
+    risk_label = (
+        "🔴 HIGH" if risk_score >= 70 else "🟡 MEDIUM" if risk_score >= 40 else "🟢 LOW"
+    )
+
+    # Role emoji mapping
+    role_emoji = {
+        "developer": "👨‍💻",
+        "architect": "🏗️",
+        "tester": "🧪",
+        "security": "🔒",
+        "reviewer": "🎯",
+    }
+
+    sections: list[str] = [
+        f"## 🤖 Automated Code Review (v2 Pipeline)\n",
+        f"**Risk Score:** {risk_label} ({risk_score}/100)\n",
+    ]
+
+    # Add final decision if available
+    if reviewer_result and reviewer_result.decision:
+        decision = reviewer_result.decision
+        decision_icon = (
+            "✅" if decision == "APPROVE"
+            else "❌" if decision == "REQUEST_CHANGES"
+            else "💬"
+        )
+        sections.append(f"**Decision:** {decision_icon} {decision}\n")
+
+    sections.append("---\n")
+
+    # Parallel role summaries
+    for result in parallel_results:
+        emoji = role_emoji.get(result.role.value, "📋")
+        blocking_note = f" ⚠️ {result.blocking_count} blocking" if result.blocking_count else ""
+        sections.append(
+            f"<details>\n"
+            f"<summary>{emoji} <b>{result.role.value.title()} Review</b>{blocking_note}</summary>\n\n"
+            f"{result.findings}\n\n"
+            f"</details>\n"
+        )
+
+    # Final reviewer section (expanded)
+    if reviewer_result:
+        sections.append("---\n")
+        sections.append(
+            f"### 🎯 Final Review\n\n{reviewer_result.findings}\n"
+        )
+
+    sections.append(f"\n---\n*Generated by gitlab-reviewer v2 · {ts}*")
+    return "\n".join(sections)
 
 
 _EXT_TO_LANG: dict[str, str] = {

@@ -126,6 +126,14 @@ class CacheConfig(BaseModel):
     valkey_url: str = "redis://localhost:6379"
 
 
+class ReviewConfig(BaseModel):
+    """v2 pipeline settings."""
+
+    pipeline_v2: bool = False  # enable v2 multi-role parallel pipeline
+    prompts_dir: str = "/opt/projects/llm-review-prompts/prompts"  # path to role prompts
+    context_token_budget: int = 3000  # token budget for docs/ and dynamic context
+
+
 class PromptsConfig(BaseModel):
     system: list[str] = ["base", "security"]
 
@@ -176,6 +184,7 @@ class AppConfig(BaseModel):
             "build/**",
         ]
     )
+    review: ReviewConfig = Field(default_factory=ReviewConfig)
     ui: UIConfig = Field(default_factory=UIConfig)
     server: ServerConfig = Field(default_factory=ServerConfig)
 
