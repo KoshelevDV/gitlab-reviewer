@@ -236,6 +236,137 @@ class MemoryStore:
             return []
 
     # ------------------------------------------------------------------
+    # Public query/management API
+    # ------------------------------------------------------------------
+
+    async def list_projects(self) -> list[str]:
+        """Return sorted list of distinct project_ids. Caps at 10_000 points."""
+        try:
+            client = await self._get_client()
+            if client is None:
+                return []
+            await self._ensure_collection()
+            project_ids: set[str] = set()
+            offset = None
+            max_iterations = 100
+            truncated = False
+            for _ in range(max_iterations):
+                results, next_offset = await client.scroll(
+                    collection_name=self._collection,
+                    limit=100,
+                    offset=offset,
+                    with_payload=["project_id"],
+                    with_vectors=False,
+                )
+                for point in results:
+                    pid = (point.payload or {}).get("project_id")
+                    if pid:
+                        project_ids.add(str(pid))
+                if next_offset is None:
+                    break
+                offset = next_offset
+            else:
+                truncated = True
+            if truncated:
+                logger.warning(
+                    "list_projects: truncated after %d iterations (10K points cap)",
+                    max_iterations,
+                )
+            return sorted(project_ids)
+        except Exception as exc:
+            logger.debug("list_projects failed (non-fatal): %s", exc)
+            return []
+
+    async def list_patterns(
+        self,
+        project_id: str = "",
+        category: str = "",
+        limit: int = 50,
+    ) -> list[dict]:
+        """Return patterns with optional filter. Limit capped at 500."""
+        try:
+            client = await self._get_client()
+            if client is None:
+                return []
+            await self._ensure_collection()
+
+            _, qm = _try_import_qdrant()
+            if qm is None:
+                return []
+
+            conditions = []
+            if project_id:
+                conditions.append(
+                    qm.FieldCondition(
+                        key="project_id",
+                        match=qm.MatchValue(value=project_id),
+                    )
+                )
+            if category:
+                conditions.append(
+                    qm.FieldCondition(
+                        key="category",
+                        match=qm.MatchValue(value=category),
+                    )
+                )
+            scroll_filter = qm.Filter(must=conditions) if conditions else None
+
+            results, _ = await client.scroll(
+                collection_name=self._collection,
+                limit=min(limit, 500),
+                with_payload=True,
+                with_vectors=False,
+                scroll_filter=scroll_filter,
+            )
+
+            items = []
+            for point in results:
+                payload = dict(point.payload or {})
+                items.append(
+                    {
+                        "id": str(point.id),
+                        "project_id": payload.pop("project_id", ""),
+                        "category": payload.pop("category", ""),
+                        "content": payload.pop("content", ""),
+                        "metadata": payload,
+                    }
+                )
+            return items
+        except Exception as exc:
+            logger.debug("list_patterns failed (non-fatal): %s", exc)
+            return []
+
+    async def delete_pattern(self, point_id: str) -> bool:
+        """Delete pattern by point_id. Returns False if not found."""
+        try:
+            client = await self._get_client()
+            if client is None:
+                return False
+            await self._ensure_collection()
+
+            _, qm = _try_import_qdrant()
+            if qm is None:
+                return False
+
+            points = await client.retrieve(
+                collection_name=self._collection,
+                ids=[point_id],
+                with_payload=False,
+                with_vectors=False,
+            )
+            if not points:
+                return False
+
+            await client.delete(
+                collection_name=self._collection,
+                points_selector=qm.PointIdsList(points=[point_id]),
+            )
+            return True
+        except Exception as exc:
+            logger.debug("delete_pattern failed (non-fatal): %s", exc)
+            return False
+
+    # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
 

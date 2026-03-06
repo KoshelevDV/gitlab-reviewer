@@ -32,6 +32,8 @@ from .api.notifications_api import router as notifications_router
 from .api.providers import router as providers_router
 from .api.queue_api import router as queue_router
 from .api.queue_api import set_queue_manager
+from .api.memory_api import router as memory_router
+from .api.memory_api import set_memory_store as memory_api_set_store
 from .api.reviews import router as reviews_router
 from .api.reviews import set_database as reviews_set_db
 from .api.reviews import set_queue_manager as reviews_set_queue
@@ -98,6 +100,7 @@ def create_app() -> FastAPI:
             url=cfg.memory.qdrant_url, collection=cfg.memory.collection
         )
         set_memory_store(memory_store)
+        memory_api_set_store(memory_store)
         reviews_set_db(db)
         reviews_set_queue(queue)
         health_set_db(db)
@@ -145,6 +148,7 @@ def create_app() -> FastAPI:
     app.include_router(queue_router)
     app.include_router(logs_router)
     app.include_router(reviews_router)
+    app.include_router(memory_router)
 
     if cfg.ui.enabled:
         mount_ui(app)
