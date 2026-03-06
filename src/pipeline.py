@@ -15,6 +15,7 @@ import re
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
+from typing import Callable
 
 # Single-pass slot replacement — prevents injected content from expanding other slots
 _SLOTS_RE = re.compile(
@@ -22,6 +23,7 @@ _SLOTS_RE = re.compile(
     r'ARCH_DECISIONS|SECURITY_BASELINE|PREVIOUS_REVIEWS|FOCUS_AREAS)\]'
 )
 
+from .config import ModelConfig, Provider, RoleModelConfig
 from .context_builder import MRContext
 from .llm_client import LLMClient
 
@@ -95,12 +97,20 @@ class PipelineManager:
     def __init__(
         self,
         llm_client: LLMClient,
-        prompts_dir: Path,
+        prompts_dir: str | Path,
         stack: str = "python",
+        role_models: RoleModelConfig | None = None,
+        providers: list[Provider] | None = None,
+        llm_factory: Callable[[Provider, ModelConfig], LLMClient] | None = None,
     ) -> None:
         self._llm = llm_client
         self._prompts_dir = Path(prompts_dir)
         self._stack = stack.lower()
+        self._role_models = role_models or RoleModelConfig()
+        self._providers = providers or []
+        self._llm_factory = llm_factory or self._default_llm_factory
+        # Cache of role → LLMClient to avoid creating duplicates
+        self._role_llm_cache: dict[ReviewRole, LLMClient] = {}
 
     # ------------------------------------------------------------------
     # Public API
@@ -168,8 +178,9 @@ class PipelineManager:
                 "Please perform your review based on the context and diff provided above."
             )
 
+            llm_client = self._get_llm_for_role(role)
             logger.debug("Role %s: calling LLM (%d chars prompt)", role.value, len(filled_prompt))
-            findings = await self._llm.chat(
+            findings = await llm_client.chat(
                 system_prompt=filled_prompt,
                 user_message=user_message,
                 temperature=0.1,
@@ -200,6 +211,55 @@ class PipelineManager:
                 blocking_count=0,
                 decision="NEEDS_DISCUSSION" if role == ReviewRole.REVIEWER else "",
             )
+
+    @staticmethod
+    def _default_llm_factory(provider: Provider, role_model: ModelConfig) -> LLMClient:
+        return LLMClient(
+            base_url=provider.url,
+            model=role_model.name,
+            timeout=role_model.timeout,
+            api_key=provider.api_key.get_secret_value(),
+        )
+
+    def _get_llm_for_role(self, role: ReviewRole) -> LLMClient:
+        """
+        Return the LLMClient for a given role.
+
+        If a per-role ModelConfig override exists for this role and providers are
+        available to resolve it, build (and cache) a dedicated LLMClient.
+        Otherwise fall back to the global LLMClient passed to __init__.
+        """
+        if role in self._role_llm_cache:
+            return self._role_llm_cache[role]
+
+        role_model: ModelConfig | None = self._role_models.roles.get(role.value)
+
+        if role_model is None or not self._providers:
+            # No override or no providers list — use global client
+            return self._llm
+
+        # Find provider by provider_id
+        provider: Provider | None = next(
+            (p for p in self._providers if p.id == role_model.provider_id and p.active),
+            None,
+        )
+        if provider is None:
+            logger.warning(
+                "Per-role model for %s: provider_id=%r not found or inactive — using global LLM",
+                role.value,
+                role_model.provider_id,
+            )
+            return self._llm
+
+        client = self._llm_factory(provider, role_model)
+        self._role_llm_cache[role] = client
+        logger.info(
+            "Per-role LLM: role=%s provider=%s model=%s",
+            role.value,
+            provider.id,
+            role_model.name,
+        )
+        return client
 
     def _load_prompt(self, role: ReviewRole) -> str:
         """

@@ -118,6 +118,31 @@ class TestTestProvider:
         assert r.status_code == 404
 
 
+class TestProviderApiKeySecurity:
+    async def test_list_providers_masks_api_key(self, app):
+        """api_key must be masked as '****' in list response and not leak the real value."""
+        secret_provider = {
+            "id": "secret-provider",
+            "name": "Secret Provider",
+            "type": "ollama",
+            "url": "http://secret-ollama:11434",
+            "api_key": "super-secret-key",
+            "active": False,
+        }
+        r = await app.post("/api/v1/providers", json=secret_provider)
+        assert r.status_code == 201
+
+        r = await app.get("/api/v1/providers")
+        assert r.status_code == 200
+
+        data = r.json()
+        prov = next(p for p in data if p["id"] == "secret-provider")
+        assert prov["api_key"] == "****", f"Expected '****', got {prov['api_key']!r}"
+
+        raw_json = r.text
+        assert "super-secret-key" not in raw_json, "Real api_key leaked in response JSON!"
+
+
 class TestGetModels:
     @respx.mock
     async def test_list_models_from_ollama(self, app):

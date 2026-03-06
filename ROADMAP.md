@@ -408,6 +408,7 @@ Browser ─────────────┤ GET /ui/                     
 
 ## Следующие шаги (v0.12+)
 
+- [x] **Per-role model config** — назначить разную LLM-модель каждой роли pipeline_v2 (feat/v2-per-role-model)
 - [ ] **Memory UI** — вкладка "Memory" в Web UI: просмотр/удаление паттернов по проекту
 - [ ] **Memory seeding** — при первом старте залить историю из SQLite в Qdrant (bootstrap)
 - [ ] **REVIEW_HISTORY category** — сохранять историю ревью по файлу (не только паттерны)

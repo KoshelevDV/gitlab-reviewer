@@ -14,9 +14,10 @@ import shutil
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 import yaml
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
 
 CONFIG_PATH = Path(os.getenv("GLR_CONFIG_FILE", "config.yml"))
 
@@ -37,9 +38,16 @@ class Provider(BaseModel):
     name: str
     type: ProviderType = ProviderType.ollama
     url: str = "http://localhost:11434"
-    api_key: str = ""
+    api_key: SecretStr = Field(default=SecretStr(""))
     active: bool = True
 
+    @field_validator("url")
+    @classmethod
+    def validate_url_scheme(cls, v: str) -> str:
+        parsed = urlparse(v)
+        if parsed.scheme not in ("http", "https"):
+            raise ValueError(f"Provider URL must use http or https scheme, got: {parsed.scheme!r}")
+        return v
 
 class ModelConfig(BaseModel):
     provider_id: str = ""
@@ -48,6 +56,7 @@ class ModelConfig(BaseModel):
     context_size: int | None = None  # None = model default
     max_tokens: int = 4096
     inline_comments: bool = True  # post findings as GitLab inline diff comments
+    timeout: int = 300
 
 
 class GitLabConfig(BaseModel):
@@ -135,12 +144,19 @@ class MemoryConfig(BaseModel):
     top_k: int = 5
 
 
+class RoleModelConfig(BaseModel):
+    """Per-role model override. Keys must match ReviewRole.value strings."""
+
+    roles: dict[str, ModelConfig] = Field(default_factory=dict)
+
+
 class ReviewConfig(BaseModel):
     """v2 pipeline settings."""
 
     pipeline_v2: bool = False  # enable v2 multi-role parallel pipeline
     prompts_dir: str = "/opt/projects/llm-review-prompts/prompts"  # path to role prompts
     context_token_budget: int = 3000  # token budget for docs/ and dynamic context
+    per_role_models: RoleModelConfig = Field(default_factory=RoleModelConfig)
 
 
 class PromptsConfig(BaseModel):
@@ -226,8 +242,8 @@ class AppConfig(BaseModel):
         llm_key = os.getenv("GLR_LLM_API_KEY", "")
         if llm_key:
             for p in self.providers:
-                if not p.api_key and (p.id == self.model.provider_id or not self.model.provider_id):
-                    p.api_key = llm_key
+                if not p.api_key.get_secret_value() and (p.id == self.model.provider_id or not self.model.provider_id):
+                    p.api_key = SecretStr(llm_key)
                     break
         return self
 
@@ -251,7 +267,8 @@ class AppConfig(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-def load_config(path: Path = CONFIG_PATH) -> AppConfig:
+def load_config(path: str | Path = CONFIG_PATH) -> AppConfig:
+    path = Path(path)
     if not path.exists():
         return AppConfig()
     with path.open(encoding="utf-8") as f:
@@ -267,6 +284,11 @@ def save_config(cfg: AppConfig, path: Path = CONFIG_PATH) -> None:
     tmp = path.with_name(".config.yml.tmp")
     # mode='json' converts Enum → str, datetime → str, etc.
     data: dict = cfg.model_dump(mode="json", exclude_none=False)
+    # Restore plaintext api_keys for YAML storage (mode="json" serializes
+    # SecretStr as "**********"; we need the real value to persist it).
+    for i, provider in enumerate(cfg.providers):
+        if i < len(data.get("providers", [])):
+            data["providers"][i]["api_key"] = provider.api_key.get_secret_value()
     # Never write secrets to yaml — strip all env-only credentials
     data.get("gitlab", {}).pop("webhook_secret", None)
     notif = data.get("notifications", {})

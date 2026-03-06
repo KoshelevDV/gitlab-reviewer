@@ -12,10 +12,18 @@ from ..llm_client import ModelInfo, get_model_info, list_models
 router = APIRouter(prefix="/api/v1/providers", tags=["providers"])
 
 
+def _mask_provider(p: "Provider") -> dict:
+    # mode="json" serializes SecretStr as "**********" (string), Enum → str, etc.
+    d = p.model_dump(mode="json")
+    if d.get("api_key"):
+        d["api_key"] = "****"
+    return d
+
+
 @router.get("")
 async def list_providers() -> JSONResponse:
     cfg = get_config()
-    return JSONResponse([p.model_dump() for p in cfg.providers])
+    return JSONResponse([_mask_provider(p) for p in cfg.providers])
 
 
 @router.post("")
@@ -62,8 +70,8 @@ async def test_provider(provider_id: str) -> JSONResponse:
         raise HTTPException(status_code=404, detail=f"Provider '{provider_id}' not found")
 
     headers = {}
-    if provider.api_key:
-        headers["Authorization"] = f"Bearer {provider.api_key}"
+    if provider.api_key.get_secret_value():
+        headers["Authorization"] = f"Bearer {provider.api_key.get_secret_value()}"
 
     try:
         async with httpx.AsyncClient(headers=headers, timeout=8) as client:
@@ -90,7 +98,7 @@ async def get_models(provider_id: str) -> JSONResponse:
     if not provider:
         raise HTTPException(status_code=404, detail=f"Provider '{provider_id}' not found")
 
-    models: list[ModelInfo] = await list_models(provider.url, provider.type.value, provider.api_key)
+    models: list[ModelInfo] = await list_models(provider.url, provider.type.value, provider.api_key.get_secret_value())
     return JSONResponse([{"id": m.id, "context_length": m.context_length} for m in models])
 
 
@@ -102,7 +110,7 @@ async def get_model_info_endpoint(provider_id: str, model_name: str) -> JSONResp
     if not provider:
         raise HTTPException(status_code=404, detail=f"Provider '{provider_id}' not found")
 
-    info = await get_model_info(provider.url, model_name, provider.type.value, provider.api_key)
+    info = await get_model_info(provider.url, model_name, provider.type.value, provider.api_key.get_secret_value())
     return JSONResponse(
         {
             "id": info.id,

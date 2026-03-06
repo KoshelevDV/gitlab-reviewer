@@ -412,6 +412,8 @@ class Reviewer:
                 llm_client=llm,
                 prompts_dir=review_cfg.prompts_dir,  # type: ignore[arg-type]
                 stack=stack,
+                role_models=review_cfg.per_role_models,
+                providers=cfg.providers,
             )
             logger.info(
                 "v2 pipeline: detected stack=%s for project=%s MR!%d",
@@ -974,8 +976,8 @@ def _make_llm_client(cfg: AppConfig) -> LLMClient:
     return LLMClient(
         base_url=provider.url,
         model=cfg.model.name,
-        timeout=300,
-        api_key=provider.api_key,
+        timeout=cfg.model.timeout,
+        api_key=provider.api_key.get_secret_value(),
     )
 
 
