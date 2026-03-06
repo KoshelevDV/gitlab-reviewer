@@ -1074,5 +1074,6 @@ class TestSummaryCommentMrUrl:
         ):
             await reviewer.review_job(ReviewJob(project_id=42, mr_iid=7))
         comment = mock_gitlab.post_mr_note.call_args[0][2]
-        assert "\\]" in comment or "Fix" in comment  # title escaped and present
+        assert "\\]" in comment, f"Expected escaped bracket '\\]' in comment, got:\n{comment[:300]}"
+        assert "Fix" in comment, f"Expected title text 'Fix' in comment, got:\n{comment[:300]}"
         assert "http://gitlab.example.com/mr/7" in comment

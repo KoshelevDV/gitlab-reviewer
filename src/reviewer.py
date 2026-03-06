@@ -51,7 +51,8 @@ def _safe_mr_url(url: str) -> str:
 
 def _safe_mr_title(title: str) -> str:
     """Escape markdown chars that could break the link text."""
-    return title.replace("\\", "\\\\").replace("]", "\\]")
+    title = title or ""
+    return title.replace("\\", "\\\\").replace("[", "\\[").replace("]", "\\]")
 
 
 @runtime_checkable
