@@ -968,3 +968,39 @@ class TestMemoryV2:
         assert call_order.index("pm.run") < call_order.index("remember"), (
             f"pm.run must happen BEFORE remember, got order: {call_order}"
         )
+
+
+# ── _make_llm_client timeout test ─────────────────────────────────────────────
+
+def test_make_llm_client_uses_config_timeout():
+    """_make_llm_client must pass ModelConfig.timeout to LLMClient constructor."""
+    from unittest.mock import MagicMock, patch
+
+    from pydantic import SecretStr
+
+    from src.config import AppConfig, ModelConfig, Provider
+    from src.reviewer import _make_llm_client
+
+    cfg = AppConfig(
+        providers=[
+            Provider(
+                id="p1",
+                name="Test Provider",
+                type="ollama",
+                url="http://localhost:11434",
+                active=True,
+                api_key=SecretStr(""),
+            )
+        ],
+        model=ModelConfig(provider_id="p1", name="test-model", timeout=42),
+    )
+
+    with patch("src.reviewer.LLMClient") as mock_llm_cls:
+        mock_llm_cls.return_value = MagicMock()
+        _make_llm_client(cfg)
+
+    mock_llm_cls.assert_called_once()
+    _, kwargs = mock_llm_cls.call_args
+    assert kwargs.get("timeout") == 42, (
+        f"Expected LLMClient(timeout=42), got timeout={kwargs.get('timeout')!r}"
+    )
