@@ -161,6 +161,13 @@ cache:
 prompts:
   system: [base, security]
 
+review:
+  pipeline_v2: false          # enable multi-role parallel pipeline
+  prompts_dir: /opt/projects/llm-review-prompts/prompts
+  context_token_budget: 3000
+  per_role_models:            # optional: assign different LLM per role
+    roles: {}                 # see Per-role model config section below
+
 ui:
   enabled: true
   log_buffer_lines: 1000
@@ -170,6 +177,33 @@ server:
   port: 8000
   log_level: info
 ```
+
+### Per-role model config (`pipeline_v2` only)
+
+When `review.pipeline_v2: true`, each review role can use a different LLM model or provider. Useful for running a cheap fast model for developer/tester roles and a smarter model for architect/security.
+
+```yaml
+review:
+  pipeline_v2: true
+  prompts_dir: /opt/projects/llm-review-prompts/prompts
+  per_role_models:
+    roles:
+      architect:
+        provider_id: openrouter
+        name: anthropic/claude-sonnet-4-5
+        temperature: 0.1
+        timeout: 120
+      security:
+        provider_id: openrouter
+        name: anthropic/claude-sonnet-4-5
+      developer:
+        provider_id: local
+        name: qwen2.5-coder:32b
+      # tester, reviewer — not set → use global model
+```
+
+**Role keys** must match exactly: `developer`, `architect`, `tester`, `security`, `reviewer`.  
+If a role has no entry or the `provider_id` is not found — falls back to the global `model` config.
 
 ### Environment variables (secrets only)
 

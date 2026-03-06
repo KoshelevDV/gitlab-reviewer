@@ -267,6 +267,11 @@ After v0.2: open `http://server:8000/ui/` to configure everything.
 - **UI CSS custom properties**: all colors in `index.html` use `var(--xxx)` tokens. Do NOT add new hardcoded Tailwind gray shades — add a token instead to keep the palette consistent
 - **Reactive UI (patchConfig)**: `PUT /api/v1/config` returns the full masked config (not `{"status":"ok"}`). `patchConfig()` in `index.html` MUST read the response body and assign it to `this.config` — otherwise saved settings won't reflect in the UI until page reload. Never change the endpoint to return a partial object
 - **setActiveProvider**: must patch both `providers[]` and `model.provider_id` in one request. Patching only `providers[].active` leaves `model.provider_id` pointing to the old provider, so the LLM backend keeps using the old one
+- **SecretStr + no field_serializer**: `api_key` is `SecretStr` WITHOUT `@field_serializer`. Use `model_dump(mode="json")` in API responses (SecretStr → `"**********"`). Call `.get_secret_value()` only explicitly at LLM call sites. Adding `field_serializer(get_secret_value)` breaks the protection — `model_dump()` will return plaintext everywhere.
+- **save_config + SecretStr**: `model_dump(mode="json")` serializes `SecretStr` as `"**********"`. `save_config` must explicitly restore plaintext via `provider.api_key.get_secret_value()` before writing to YAML, otherwise the config file stores masked values.
+- **_mask_provider uses mode="json"**: `p.model_dump(mode="json")` returns `"**********"` for SecretStr, then `_mask_provider` replaces it with `"****"`. Changing to `model_dump()` (no mode) would return a `SecretStr` object — not JSON-serializable.
+- **Per-role LLMClient cache**: `_role_llm_cache` in `PipelineManager` holds `LLMClient` instances per role. `PipelineManager` is one-shot (one review = one instance). If api_key rotates, the cached client is stale — recreate `PipelineManager`.
+- **RoleModelConfig key**: keys in `roles` dict must match `ReviewRole.value` strings exactly (e.g. `"architect"`, `"developer"`, `"tester"`, `"security"`, `"reviewer"`). Wrong key = silently uses global LLM.
 
 ## Status
 
@@ -299,3 +304,8 @@ After v0.2: open `http://server:8000/ui/` to configure everything.
 | UI redesign: CSS custom properties, dark palette, WCAG contrast | v0.13 | ✅ Done |
 | Reactive UI: patchConfig returns full config, no page-reload needed | v0.14 | ✅ Done |
 | setActiveProvider also updates model.provider_id in one request | v0.14 | ✅ Done |
+| Qdrant memory store + docker-compose full stack (profiles: memory, llamacpp) | v0.15 | ✅ Done |
+| Per-role LLM model config: assign different model per pipeline_v2 role | v0.15 | ✅ Done |
+| api_key: SecretStr (no field_serializer), model_dump(mode="json") in API | v0.15 | ✅ Done |
+| URL validator for provider.url (http/https only) | v0.15 | ✅ Done |
+| timeout: int = 300 in ModelConfig (configurable) | v0.15 | ✅ Done |
