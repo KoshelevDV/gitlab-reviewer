@@ -338,5 +338,8 @@ async def _with_retry(fn):
 | 🟡 P2 | Q-6: Weekly stats API | S | Analytics | ✅ Done (`8969dd7`) |
 | 🟢 P3 | FT-5: Reviewer Feedback Learning | XL | Long-term | 🔲 Open |
 | 🟢 P3 | FT-6: Automation Rules (YAML) | XL | Power users | 🔲 Open |
+| 🟢 P3 | #11: ruff lint fix (52 errors) | XS | Code quality | ✅ Done (`chore/ruff-lint-fix`) |
+| 🟢 P3 | #8: Q-9 test assertions (MR link at start) | XS | Test quality | ✅ Done |
+| 🟢 P3 | #10: `_safe_mr_title` type annotation `str\|None` | XS | Type safety | ✅ Done |
 
 **Открытые CODE_REVIEW items:** WARN-4, WARN-6, WARN-7, STYLE-1 (все Low/Medium)

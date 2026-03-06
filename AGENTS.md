@@ -272,6 +272,10 @@ After v0.2: open `http://server:8000/ui/` to configure everything.
 - **_mask_provider uses mode="json"**: `p.model_dump(mode="json")` returns `"**********"` for SecretStr, then `_mask_provider` replaces it with `"****"`. Changing to `model_dump()` (no mode) would return a `SecretStr` object — not JSON-serializable.
 - **Per-role LLMClient cache**: `_role_llm_cache` in `PipelineManager` holds `LLMClient` instances per role. `PipelineManager` is one-shot (one review = one instance). If api_key rotates, the cached client is stale — recreate `PipelineManager`.
 - **RoleModelConfig key**: keys in `roles` dict must match `ReviewRole.value` strings exactly (e.g. `"architect"`, `"developer"`, `"tester"`, `"security"`, `"reviewer"`). Wrong key = silently uses global LLM.
+- **StrEnum vs str+Enum**: `ReviewRole` and `MemoryCategory` use `StrEnum` (Python 3.11+). Do NOT revert to `class X(str, Enum)` — ruff UP042 flags it and StrEnum is cleaner.
+- **E402 in pipeline.py**: module-level imports must appear before any code (including regex compiles). Move `_SLOTS_RE` after all imports, not before.
+- **S108 in tests**: never use hardcoded `/tmp/...` paths in test data — use `tmp_path` pytest fixture or `tempfile.mkdtemp()`. Ruff flags it as S108.
+- **test_pipeline_v2_true_enables_new_pipeline**: uses `tmp_path` fixture (injected by pytest) to get a real temp dir for `prompts_dir`. Signature must include `tmp_path` parameter.
 
 ## Status
 
@@ -309,3 +313,4 @@ After v0.2: open `http://server:8000/ui/` to configure everything.
 | api_key: SecretStr (no field_serializer), model_dump(mode="json") in API | v0.15 | ✅ Done |
 | URL validator for provider.url (http/https only) | v0.15 | ✅ Done |
 | timeout: int = 300 in ModelConfig (configurable) | v0.15 | ✅ Done |
+| chore: ruff lint fix — 52 errors fixed (#11, #8, #10) | chore | ✅ Done |

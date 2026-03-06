@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from src.context_builder import MRContext
-from src.pipeline import PipelineManager, ReviewRole, RoleResult
-
+from src.pipeline import PipelineManager, ReviewRole
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -265,7 +264,7 @@ class TestPipelineRun:
             # Final reviewer response includes APPROVE
             if "Final Review" in system_prompt or "PREVIOUS_REVIEWS" in system_prompt:
                 return "## Review\n\nAll good.\n\n---\n## Decision: APPROVE\n\n**Reason:** OK"
-            return f"## Review\n\nLooks good.\n[HIGH] Minor issue found."
+            return "## Review\n\nLooks good.\n[HIGH] Minor issue found."
 
         llm = MagicMock()
         llm.chat = AsyncMock(side_effect=mock_chat)
@@ -387,28 +386,36 @@ class TestPipelineV2Config:
         """pipeline_v2=False must be readable from config."""
         from src.config import AppConfig
 
+        _p1 = {"id": "p1", "name": "test-provider", "type": "llamacpp",
+               "url": "http://localhost:8080", "active": True}
         cfg_data = {
             "gitlab": {"url": "http://gl.example.com", "auth_type": "token"},
-            "providers": [{"id": "p1", "name": "test-provider", "type": "llamacpp", "url": "http://localhost:8080", "active": True}],
+            "providers": [_p1],
             "model": {"provider_id": "p1", "name": "test-model"},
             "review": {"pipeline_v2": False},
         }
         cfg = AppConfig.model_validate(cfg_data)
         assert cfg.review.pipeline_v2 is False
 
-    def test_pipeline_v2_true_enables_new_pipeline(self) -> None:
+    def test_pipeline_v2_true_enables_new_pipeline(self, tmp_path) -> None:
         """pipeline_v2=True must be readable from config."""
+        import os
+
         from src.config import AppConfig
 
+        prompts_dir = str(tmp_path / "prompts")
+        os.makedirs(prompts_dir, exist_ok=True)
+        _p1 = {"id": "p1", "name": "test-provider", "type": "llamacpp",
+               "url": "http://localhost:8080", "active": True}
         cfg_data = {
             "gitlab": {"url": "http://gl.example.com", "auth_type": "token"},
-            "providers": [{"id": "p1", "name": "test-provider", "type": "llamacpp", "url": "http://localhost:8080", "active": True}],
+            "providers": [_p1],
             "model": {"provider_id": "p1", "name": "test-model"},
-            "review": {"pipeline_v2": True, "prompts_dir": "/tmp/prompts"},
+            "review": {"pipeline_v2": True, "prompts_dir": prompts_dir},
         }
         cfg = AppConfig.model_validate(cfg_data)
         assert cfg.review.pipeline_v2 is True
-        assert cfg.review.prompts_dir == "/tmp/prompts"
+        assert cfg.review.prompts_dir == prompts_dir
 
 
 # ---------------------------------------------------------------------------
@@ -460,7 +467,7 @@ class TestPipelineRunFinalReceivesAllRoles:
             arch_decisions="",
         )
 
-        results = await pm.run(ctx)
+        await pm.run(ctx)
 
         # Final call must contain results from all 4 parallel roles
         final_prompt = next((a for a in call_args if "Final:" in a), None)
@@ -651,8 +658,14 @@ class TestPerRoleModelConfig:
                 "pipeline_v2": True,
                 "per_role_models": {
                     "roles": {
-                        "architect": {"provider_id": "openrouter", "name": "anthropic/claude-sonnet-4-5"},
-                        "security": {"provider_id": "openrouter", "name": "anthropic/claude-sonnet-4-5"},
+                        "architect": {
+                            "provider_id": "openrouter",
+                            "name": "anthropic/claude-sonnet-4-5",
+                        },
+                        "security": {
+                            "provider_id": "openrouter",
+                            "name": "anthropic/claude-sonnet-4-5",
+                        },
                         "developer": {"provider_id": "openrouter", "name": "qwen2.5-coder-7b"},
                     }
                 },
@@ -707,7 +720,7 @@ class TestPerRoleModelConfig:
             diff="diff",
             arch_decisions="",
         )
-        results = await pm.run(ctx)
+        await pm.run(ctx)
 
         # architect_llm must have been called
         assert arch_llm.chat.call_count == 1
@@ -715,10 +728,10 @@ class TestPerRoleModelConfig:
         assert global_llm.chat.call_count == 4
 
     @pytest.mark.asyncio
-    async def test_backward_compat_run_uses_global_llm_for_all_roles(self, prompts_dir: Path, mock_llm: MagicMock):
+    async def test_backward_compat_run_uses_global_llm_for_all_roles(
+        self, prompts_dir: Path, mock_llm: MagicMock
+    ):
         """AC4: Without per_role_models, all roles in run() use the same global LLMClient."""
-        from src.config import RoleModelConfig
-        from unittest.mock import AsyncMock
 
         call_clients = []
 

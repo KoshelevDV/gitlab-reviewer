@@ -12,10 +12,14 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
-from typing import Callable
+
+from .config import ModelConfig, Provider, RoleModelConfig
+from .context_builder import MRContext
+from .llm_client import LLMClient
 
 # Single-pass slot replacement — prevents injected content from expanding other slots
 _SLOTS_RE = re.compile(
@@ -23,14 +27,10 @@ _SLOTS_RE = re.compile(
     r'ARCH_DECISIONS|SECURITY_BASELINE|PREVIOUS_REVIEWS|FOCUS_AREAS)\]'
 )
 
-from .config import ModelConfig, Provider, RoleModelConfig
-from .context_builder import MRContext
-from .llm_client import LLMClient
-
 logger = logging.getLogger(__name__)
 
 
-class ReviewRole(str, Enum):
+class ReviewRole(StrEnum):
     DEVELOPER = "developer"
     ARCHITECT = "architect"
     TESTER = "tester"

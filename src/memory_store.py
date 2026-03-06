@@ -14,7 +14,7 @@ import asyncio
 import logging
 import uuid
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -32,7 +32,7 @@ _EMBEDDING_MODEL = "all-MiniLM-L6-v2"
 # ---------------------------------------------------------------------------
 
 
-class MemoryCategory(str, Enum):
+class MemoryCategory(StrEnum):
     ERROR_PATTERN = "error_pattern"    # recurring error found in the project
     REVIEW_HISTORY = "review_history"  # past review of a file/function
 
@@ -382,7 +382,10 @@ class MemoryStore:
         return self._client
 
     async def _get_encoder(self) -> Any:
-        """Return or lazily create the SentenceTransformer encoder (async, CPU-bound load via thread)."""
+        """Return or lazily create the SentenceTransformer encoder.
+
+        Async, CPU-bound load via thread.
+        """
         if self._encoder is not None:
             return self._encoder
         SentenceTransformer = _try_import_sentence_transformers()
