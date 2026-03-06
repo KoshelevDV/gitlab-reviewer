@@ -21,6 +21,7 @@ import fnmatch
 import logging
 import re
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 from . import metrics as _metrics
@@ -327,13 +328,20 @@ class Reviewer:
             # ----------------------------------------------------------------
             review_cfg = cfg.review
             token_budget = review_cfg.context_token_budget
-            ref = mr.source_branch
+
+            # Security: trusted context MUST come from target_branch (main/master).
+            # Only maintainers can push there, so AGENTS.md/docs/ are not attacker-controlled.
+            # source_branch is used only for dynamic context (full file content of changed files).
+            trusted_ref = mr.target_branch   # main/master — only maintainers push here
+            source_ref = mr.source_branch    # PR author's branch — untrusted for static context
+
+            p = PromptEngine(prompts_dir=Path(review_cfg.prompts_dir))
 
             agents_md, docs_ctx, security_baseline, task_ctx, dynamic_ctx = await asyncio.gather(
-                get_agents_md(gitlab, job.project_id, ref),
-                get_docs_context(gitlab, job.project_id, ref, token_budget=token_budget),
-                get_security_baseline(gitlab, job.project_id, ref),
-                get_task_context(gitlab, job.project_id, job.mr_iid),
+                get_agents_md(gitlab, job.project_id, trusted_ref),
+                get_docs_context(gitlab, job.project_id, trusted_ref, token_budget=token_budget),
+                get_security_baseline(gitlab, job.project_id, trusted_ref),
+                get_task_context(gitlab, job.project_id, job.mr_iid, sanitize=p.sanitize_untrusted),
                 get_dynamic_context(
                     gitlab,
                     job.project_id,
@@ -346,33 +354,33 @@ class Reviewer:
 
             project_context = "\n\n".join(filter(None, [agents_md, docs_ctx]))
             raw_diff = _combine_diffs(diffs, annotate=True)
+            max_diff_chars = cfg.model.context_size or 32_000
+            safe_diff = p.sanitize_untrusted(raw_diff, max_chars=max_diff_chars)
 
             ctx = MRContext(
                 project_context=project_context,
                 task_context=task_ctx,
                 dynamic_context=dynamic_ctx,
                 security_baseline=security_baseline,
-                diff=raw_diff,
+                diff=safe_diff,
                 arch_decisions=docs_ctx,
             )
 
             # ----------------------------------------------------------------
             # 4. Detect stack & run pipeline
             # ----------------------------------------------------------------
+            stack = PipelineManager.detect_stack(agents_md) if agents_md else "python"
             pm = PipelineManager(
                 llm_client=llm,
                 prompts_dir=review_cfg.prompts_dir,  # type: ignore[arg-type]
-                stack="python",  # default; override below from AGENTS.md
+                stack=stack,
             )
-            if agents_md:
-                detected_stack = pm._detect_stack(agents_md)
-                pm._stack = detected_stack
-                logger.info(
-                    "v2 pipeline: detected stack=%s for project=%s MR!%d",
-                    detected_stack,
-                    job.project_id,
-                    job.mr_iid,
-                )
+            logger.info(
+                "v2 pipeline: detected stack=%s for project=%s MR!%d",
+                stack,
+                job.project_id,
+                job.mr_iid,
+            )
 
             results = await pm.run(ctx)
 

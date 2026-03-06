@@ -382,6 +382,53 @@ class GitLabClient:
             "head_sha": v.get("head_commit_sha", ""),
         }
 
+    # ------------------------------------------------------------------
+    # Repository file access (public API — avoids private attr access from callers)
+    # ------------------------------------------------------------------
+
+    async def get_file_raw(
+        self,
+        project_id: int | str,
+        file_path: str,
+        ref: str,
+    ) -> str | None:
+        """Fetch raw file content from repository. Returns None on 404."""
+        pid = quote(str(project_id), safe="")
+        fpath = quote(file_path, safe="")
+
+        async def _fetch() -> str | None:
+            r = await self._client.get(
+                f"{self._base}/api/v4/projects/{pid}/repository/files/{fpath}/raw",
+                params={"ref": ref},
+            )
+            if r.status_code == 404:
+                return None
+            r.raise_for_status()
+            return r.text
+
+        return await with_retry(_fetch)
+
+    async def list_tree(
+        self,
+        project_id: int | str,
+        path: str,
+        ref: str,
+    ) -> list[dict]:
+        """List repository tree at path recursively. Returns [] if path doesn't exist."""
+        pid = quote(str(project_id), safe="")
+
+        async def _fetch() -> list[dict]:
+            r = await self._client.get(
+                f"{self._base}/api/v4/projects/{pid}/repository/tree",
+                params={"path": path, "ref": ref, "recursive": "true", "per_page": 100},
+            )
+            if r.status_code == 404:
+                return []
+            r.raise_for_status()
+            return r.json()
+
+        return await with_retry(_fetch)
+
     async def post_mr_discussion(
         self,
         project_id: int | str,

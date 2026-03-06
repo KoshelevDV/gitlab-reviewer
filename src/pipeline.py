@@ -16,6 +16,12 @@ from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 
+# Single-pass slot replacement — prevents injected content from expanding other slots
+_SLOTS_RE = re.compile(
+    r'\[(?:PROJECT_CONTEXT|TASK_CONTEXT|DYNAMIC_CONTEXT|DIFF|'
+    r'ARCH_DECISIONS|SECURITY_BASELINE|PREVIOUS_REVIEWS|FOCUS_AREAS)\]'
+)
+
 from .context_builder import MRContext
 from .llm_client import LLMClient
 
@@ -237,6 +243,9 @@ class PipelineManager:
         """
         Replace slot placeholders in prompt template with actual context values.
 
+        Uses single-pass regex substitution to prevent injected content from
+        expanding other slots (prompt injection via [DIFF] containing [PREVIOUS_REVIEWS]).
+
         Slots:
           [PROJECT_CONTEXT]   → AGENTS.md + docs/
           [TASK_CONTEXT]      → issue or MR description
@@ -245,43 +254,43 @@ class PipelineManager:
           [ARCH_DECISIONS]    → architecture decision docs
           [SECURITY_BASELINE] → security-relevant docs
           [PREVIOUS_REVIEWS]  → aggregated findings from earlier roles
+          [FOCUS_AREAS]       → (reserved, empty by default)
         """
-        filled = template
-        slot_values = {
-            "[PROJECT_CONTEXT]": ctx.project_context or "(no project context available)",
-            "[TASK_CONTEXT]": ctx.task_context or "(no task context available)",
-            "[DYNAMIC_CONTEXT]": ctx.dynamic_context or "(no dynamic context available)",
-            "[DIFF]": ctx.diff or "(no diff)",
-            "[ARCH_DECISIONS]": ctx.arch_decisions or ctx.project_context or "(no arch decisions)",
-            "[SECURITY_BASELINE]": ctx.security_baseline or "(no security baseline)",
-            "[PREVIOUS_REVIEWS]": previous_reviews or "(no previous reviews)",
+        slot_values: dict[str, str] = {
+            "[PROJECT_CONTEXT]":   ctx.project_context   or "(no project context available)",
+            "[TASK_CONTEXT]":      ctx.task_context       or "(no task context available)",
+            "[DYNAMIC_CONTEXT]":   ctx.dynamic_context    or "(no dynamic context available)",
+            "[DIFF]":              ctx.diff               or "(no diff)",
+            "[ARCH_DECISIONS]":    ctx.arch_decisions     or ctx.project_context or "",
+            "[SECURITY_BASELINE]": ctx.security_baseline  or "",
+            "[PREVIOUS_REVIEWS]":  previous_reviews       or "",
+            "[FOCUS_AREAS]":       "",
         }
-        for slot, value in slot_values.items():
-            filled = filled.replace(slot, value)
-        return filled
+        return _SLOTS_RE.sub(lambda m: slot_values.get(m.group(0), m.group(0)), template)
 
-    def _detect_stack(self, agents_md: str) -> str:
+    @staticmethod
+    def detect_stack(agents_md: str) -> str:
         """
         Detect technology stack from AGENTS.md content.
 
         Rules (first match wins):
           .NET / C# / Blazor  → dotnet
           Rust                → rust
-          Python              → python
           Go / golang         → go
           Default             → python
         """
         text = agents_md.lower()
-        # .NET check (must come before Python to avoid false positives from .NET keywords)
-        if any(kw in text for kw in (".net", "c#", "blazor", "asp.net", "dotnet", "csharp")):
+        if any(kw in text for kw in (".net", "c#", "blazor", "csharp", "aspnet")):
             return "dotnet"
         if "rust" in text:
             return "rust"
-        if "golang" in text or re.search(r"\bgo\b", text):
+        if "golang" in text or "go module" in text or '"go"' in text:
             return "go"
-        if "python" in text:
-            return "python"
         return "python"
+
+    def _detect_stack(self, agents_md: str) -> str:
+        """Deprecated: use PipelineManager.detect_stack() static method instead."""
+        return PipelineManager.detect_stack(agents_md)
 
     def _count_blocking(self, findings: str) -> int:
         """Count occurrences of BLOCKING, CRITICAL, or HIGH in findings text."""

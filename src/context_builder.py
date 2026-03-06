@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from urllib.parse import quote
 
@@ -68,18 +69,11 @@ async def _fetch_file_raw(
     ref: str,
 ) -> str | None:
     """
-    Fetch raw file content from GitLab repository.
-    Returns None on 404 or any error.
+    Fetch raw file content via public GitLabClient API.
+    Kept as a thin wrapper for backwards compatibility.
     """
-    pid = quote(str(project_id), safe="")
-    encoded_path = quote(file_path, safe="")
-    url = f"{client._base}/api/v4/projects/{pid}/repository/files/{encoded_path}/raw"
     try:
-        resp = await client._client.get(url, params={"ref": ref})
-        if resp.status_code == 404:
-            return None
-        resp.raise_for_status()
-        return resp.text
+        return await client.get_file_raw(project_id, file_path, ref)
     except Exception as exc:  # noqa: BLE001
         logger.debug("Failed to fetch file %s@%s: %s", file_path, ref, exc)
         return None
@@ -92,21 +86,12 @@ async def _list_tree(
     ref: str,
 ) -> list[dict]:
     """
-    List files in a repository directory recursively.
-    Returns list of GitLab tree items (dicts with 'path', 'type', etc.).
-    Returns empty list if directory doesn't exist or on error.
+    List files in a repository directory via public GitLabClient API.
+    Kept as a thin wrapper for backwards compatibility.
     """
-    pid = quote(str(project_id), safe="")
-    url = f"{client._base}/api/v4/projects/{pid}/repository/tree"
     try:
-        resp = await client._client.get(
-            url,
-            params={"path": path, "ref": ref, "recursive": "true", "per_page": 100},
-        )
-        if resp.status_code == 404:
-            return []
-        resp.raise_for_status()
-        return [item for item in resp.json() if item.get("type") == "blob"]
+        items = await client.list_tree(project_id, path, ref)
+        return [item for item in items if item.get("type") == "blob"]
     except Exception as exc:  # noqa: BLE001
         logger.debug("Failed to list tree %s@%s: %s", path, ref, exc)
         return []
@@ -240,6 +225,7 @@ async def get_task_context(
     client: GitLabClient,
     project_id: int | str,
     mr_iid: int,
+    sanitize: Callable[[str, int], str] | None = None,
 ) -> str:
     """
     Build task context for the MR.
@@ -247,8 +233,15 @@ async def get_task_context(
     1. Looks for a linked issue in the MR description (Closes #N / Fixes #N / Resolves #N).
     2. If found — returns issue title + description.
     3. If not found — returns MR title + description as fallback.
+
+    Args:
+        sanitize: Optional callable(text, max_chars) → str that strips prompt injection
+                  markers from untrusted content. When None, content is truncated only.
     """
     pid = quote(str(project_id), safe="")
+
+    def _s(text: str, max_chars: int = 4000) -> str:
+        return sanitize(text, max_chars) if sanitize else text[:max_chars]
 
     # Fetch MR info
     try:
@@ -261,11 +254,12 @@ async def get_task_context(
         logger.warning("Failed to fetch MR info project=%s MR!%d: %s", project_id, mr_iid, exc)
         return ""
 
-    mr_title = mr_data.get("title", "")
-    mr_description = mr_data.get("description") or ""
+    mr_title = _s(mr_data.get("title", ""), 500)
+    mr_description = _s(mr_data.get("description") or "", 2000)
 
-    # Try to find linked issue reference
-    match = _CLOSES_RE.search(mr_description)
+    # Try to find linked issue reference (search raw description before sanitize)
+    raw_description = mr_data.get("description") or ""
+    match = _CLOSES_RE.search(raw_description)
     if match:
         issue_iid = int(match.group(1))
         try:
@@ -274,8 +268,8 @@ async def get_task_context(
             )
             issue_resp.raise_for_status()
             issue_data = issue_resp.json()
-            issue_title = issue_data.get("title", "")
-            issue_description = issue_data.get("description") or ""
+            issue_title = _s(issue_data.get("title", ""), 500)
+            issue_description = _s(issue_data.get("description") or "", 2000)
             logger.debug(
                 "Linked issue #%d found for project=%s MR!%d", issue_iid, project_id, mr_iid
             )
