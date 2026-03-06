@@ -80,6 +80,14 @@ def set_database(db: Database) -> None:
     _db = db
 
 
+_memory_store: MemoryStore | None = None
+
+
+def set_memory_store(store: MemoryStore) -> None:
+    global _memory_store
+    _memory_store = store
+
+
 # ---------------------------------------------------------------------------
 # Inline comment parsing
 # ---------------------------------------------------------------------------
@@ -357,9 +365,9 @@ class Reviewer:
             # 3b. Recall past patterns from memory (if enabled)
             # ----------------------------------------------------------------
             mem_cfg = cfg.memory
-            memory = MemoryStore(url=mem_cfg.qdrant_url, collection=mem_cfg.collection)
+            memory = _memory_store  # singleton — loaded once at startup
             past_patterns: list[MemoryRecord] = []
-            if mem_cfg.enabled:
+            if mem_cfg.enabled and memory is not None:
                 past_patterns = await memory.recall(
                     project_id=str(job.project_id),
                     query=f"review findings for {mr.source_branch}",
@@ -373,12 +381,13 @@ class Reviewer:
                     )
 
             # Inject past patterns into project context
+            # recall() content may contain LLM-generated text — sanitize before prompt insertion
             past_section = ""
             if past_patterns:
                 lines = ["## Past Patterns (from memory)"]
                 for i, rec in enumerate(past_patterns, 1):
                     lines.append(f"\n### Pattern {i} ({rec.category.value})")
-                    lines.append(rec.content[:500])
+                    lines.append(p.sanitize_untrusted(rec.content, max_chars=500))
                 past_section = "\n".join(lines)
 
             project_context = "\n\n".join(filter(None, [agents_md, docs_ctx, past_section]))
@@ -439,7 +448,7 @@ class Reviewer:
             # ----------------------------------------------------------------
             # 5b. Store blocking findings in memory (if enabled)
             # ----------------------------------------------------------------
-            if mem_cfg.enabled:
+            if mem_cfg.enabled and memory is not None:
                 for result in results:
                     if result.blocking_count > 0:
                         await memory.remember(

@@ -41,8 +41,10 @@ from .config import CONFIG_PATH, reload_config
 from .db import Database
 from .log_buffer import setup_log_buffer
 from .prompt_engine import PromptEngine
+from .memory_store import MemoryStore
 from .reviewer import Reviewer
 from .reviewer import set_database as reviewer_set_db
+from .reviewer import set_memory_store
 from .ui.router import mount_ui
 from .webhook import make_webhook_router
 from .webhook import set_queue_manager as webhook_set_queue
@@ -91,6 +93,11 @@ def create_app() -> FastAPI:
         log_buf.set_loop(asyncio.get_running_loop())
         await db.init()
         reviewer_set_db(db)
+        # MemoryStore singleton — model loaded once, shared across all reviews
+        memory_store = MemoryStore(
+            url=cfg.memory.qdrant_url, collection=cfg.memory.collection
+        )
+        set_memory_store(memory_store)
         reviews_set_db(db)
         reviews_set_queue(queue)
         health_set_db(db)

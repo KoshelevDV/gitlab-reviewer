@@ -191,6 +191,107 @@ async def test_project_id_filter():
     assert "must" in call_kwargs["query_filter"]
 
 
+@pytest.mark.asyncio
+async def test_remember_calls_upsert_with_correct_payload():
+    """remember() must call upsert with correct project_id, content, category in payload."""
+    store = MemoryStore(url="http://fake:6333", collection="test")
+
+    mock_client = AsyncMock()
+    mock_collections = MagicMock()
+    mock_collections.collections = [MagicMock()]
+    mock_collections.collections[0].name = "test"
+    mock_client.get_collections = AsyncMock(return_value=mock_collections)
+    mock_client.upsert = AsyncMock()
+    mock_client.create_collection = AsyncMock()
+    mock_client.create_payload_index = AsyncMock()
+
+    encoder = _make_encoder()
+
+    with (
+        patch("src.memory_store._try_import_qdrant") as mock_import_qdrant,
+        patch("src.memory_store._try_import_sentence_transformers") as mock_import_st,
+    ):
+        FakeAsyncQdrantClient = MagicMock(return_value=mock_client)
+        fake_qm = MagicMock()
+        fake_qm.PointStruct = MagicMock(side_effect=lambda **kw: kw)
+        fake_qm.VectorParams = MagicMock()
+        fake_qm.Distance = MagicMock()
+        fake_qm.Distance.COSINE = "Cosine"
+        fake_qm.PayloadSchemaType = MagicMock()
+        fake_qm.PayloadSchemaType.KEYWORD = "keyword"
+
+        mock_import_qdrant.return_value = (FakeAsyncQdrantClient, fake_qm)
+        mock_import_st.return_value = MagicMock(return_value=encoder)
+
+        record = MemoryRecord(
+            project_id="proj-42",
+            category=MemoryCategory.ERROR_PATTERN,
+            content="SQL injection in login endpoint",
+            metadata={"file_path": "src/auth.py", "mr_iid": 7},
+        )
+        await store.remember(record)
+
+    # upsert must have been called exactly once
+    mock_client.upsert.assert_called_once()
+    call_kwargs = mock_client.upsert.call_args.kwargs
+    assert call_kwargs["collection_name"] == "test"
+
+    # Payload must carry the correct project_id, content, category
+    points = call_kwargs["points"]
+    assert len(points) == 1
+    payload = points[0]["payload"]
+    assert payload["project_id"] == "proj-42"
+    assert payload["content"] == "SQL injection in login endpoint"
+    assert payload["category"] == MemoryCategory.ERROR_PATTERN.value
+
+
+@pytest.mark.asyncio
+async def test_recall_filter_contains_correct_project_id():
+    """recall() filter must match exactly the requested project_id value."""
+    store = MemoryStore(url="http://fake:6333", collection="test")
+
+    mock_client = AsyncMock()
+    mock_collections = MagicMock()
+    mock_collections.collections = [MagicMock()]
+    mock_collections.collections[0].name = "test"
+    mock_client.get_collections = AsyncMock(return_value=mock_collections)
+    mock_client.create_collection = AsyncMock()
+    mock_client.create_payload_index = AsyncMock()
+    mock_client.search = AsyncMock(return_value=[])
+
+    encoder = _make_encoder()
+
+    captured_match_values: list[dict] = []
+
+    with (
+        patch("src.memory_store._try_import_qdrant") as mock_import_qdrant,
+        patch("src.memory_store._try_import_sentence_transformers") as mock_import_st,
+    ):
+        FakeAsyncQdrantClient = MagicMock(return_value=mock_client)
+        fake_qm = MagicMock()
+        fake_qm.Filter = MagicMock(side_effect=lambda **kw: kw)
+        fake_qm.FieldCondition = MagicMock(side_effect=lambda **kw: kw)
+
+        def capture_match_value(**kw):
+            captured_match_values.append(kw)
+            return kw
+
+        fake_qm.MatchValue = MagicMock(side_effect=capture_match_value)
+
+        mock_import_qdrant.return_value = (FakeAsyncQdrantClient, fake_qm)
+        mock_import_st.return_value = MagicMock(return_value=encoder)
+
+        await store.recall(project_id="proj-alpha", query="any query", top_k=5)
+
+    # MatchValue must have been called with exactly the right project_id
+    assert len(captured_match_values) >= 1
+    assert any(mv.get("value") == "proj-alpha" for mv in captured_match_values), (
+        f"Expected MatchValue(value='proj-alpha') but got: {captured_match_values}"
+    )
+    # Must NOT contain a wrong project_id
+    assert not any(mv.get("value") == "proj-beta" for mv in captured_match_values)
+
+
 def test_memory_config_defaults():
     """MemoryConfig has enabled=False and sensible defaults."""
     cfg = MemoryConfig()

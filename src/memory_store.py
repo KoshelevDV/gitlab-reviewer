@@ -10,6 +10,7 @@ Falls back to no-op if Qdrant is unavailable — reviewer continues without memo
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 from dataclasses import dataclass, field
@@ -120,11 +121,12 @@ class MemoryStore:
             if not await self.is_available():
                 return
             await self._ensure_collection()
-            encoder = self._get_encoder()
+            encoder = await self._get_encoder()
             if encoder is None:
                 return
 
-            vector = encoder.encode(record.content).tolist()
+            vector = await asyncio.to_thread(encoder.encode, record.content)
+            vector = vector.tolist()
 
             AsyncQdrantClient, qm = _try_import_qdrant()
             if qm is None:
@@ -162,12 +164,17 @@ class MemoryStore:
         query: str,
         top_k: int = 5,
     ) -> list[MemoryRecord]:
-        """Find relevant past findings for this project. Returns [] if unavailable."""
+        """
+        Find relevant past findings for this project. Returns [] if unavailable.
+
+        WARNING: content field may contain LLM-generated text.
+        Caller MUST apply sanitize_untrusted(record.content) before inserting into prompts.
+        """
         try:
             if not await self.is_available():
                 return []
             await self._ensure_collection()
-            encoder = self._get_encoder()
+            encoder = await self._get_encoder()
             if encoder is None:
                 return []
 
@@ -175,7 +182,8 @@ class MemoryStore:
             if qm is None:
                 return []
 
-            vector = encoder.encode(query).tolist()
+            vector = await asyncio.to_thread(encoder.encode, query)
+            vector = vector.tolist()
 
             results = await self._client.search(
                 collection_name=self._collection,
@@ -196,6 +204,10 @@ class MemoryStore:
             for hit in results:
                 payload = hit.payload or {}
                 content = payload.pop("content", "")
+                # Basic prompt injection defence: bracket substitution so that
+                # LLM-generated content cannot abuse markdown link syntax in prompts.
+                # Caller MUST additionally apply sanitize_untrusted() before inserting into prompts.
+                content = content.replace("[", "【").replace("]", "】")
                 pid = payload.pop("project_id", project_id)
                 raw_cat = payload.pop("category", MemoryCategory.ERROR_PATTERN.value)
                 try:
@@ -235,11 +247,11 @@ class MemoryStore:
         if AsyncQdrantClient is None:
             logger.debug("qdrant-client not installed — memory disabled")
             return None
-        self._client = AsyncQdrantClient(url=self._url)
+        self._client = AsyncQdrantClient(url=self._url, timeout=5.0)
         return self._client
 
-    def _get_encoder(self) -> Any:
-        """Return or lazily create the SentenceTransformer encoder."""
+    async def _get_encoder(self) -> Any:
+        """Return or lazily create the SentenceTransformer encoder (async, CPU-bound load via thread)."""
         if self._encoder is not None:
             return self._encoder
         SentenceTransformer = _try_import_sentence_transformers()
@@ -247,7 +259,7 @@ class MemoryStore:
             logger.debug("sentence-transformers not installed — memory disabled")
             return None
         try:
-            self._encoder = SentenceTransformer(_EMBEDDING_MODEL)
+            self._encoder = await asyncio.to_thread(SentenceTransformer, _EMBEDDING_MODEL)
         except Exception as exc:
             logger.debug("Failed to load embedding model: %s", exc)
             return None
