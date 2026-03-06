@@ -2,25 +2,10 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock
 
-import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
-
-
-# ---------------------------------------------------------------------------
-# Helpers — mock qdrant objects
-# ---------------------------------------------------------------------------
-
-
-def _make_point(point_id: str, payload: dict):
-    """Create a mock Qdrant ScoredPoint / Record object."""
-    p = MagicMock()
-    p.id = point_id
-    p.payload = payload
-    return p
-
 
 # ---------------------------------------------------------------------------
 # Fixture: minimal app wired with memory router
@@ -58,29 +43,18 @@ class TestListPatterns:
 
         store = AsyncMock()
         store.is_available.return_value = True
-        store._collection = "reviewer_memory"
-
-        mock_client = AsyncMock()
-        store._get_client.return_value = mock_client
-        store._ensure_collection = AsyncMock()
-
-        point = _make_point(
-            "uuid-1",
+        store.list_patterns.return_value = [
             {
+                "id": "uuid-1",
                 "project_id": "p1",
                 "category": "error_pattern",
                 "content": "SQL injection in query.py",
-                "file_path": "query.py",
-            },
-        )
-        mock_client.scroll.return_value = ([point], None)
-
+                "metadata": {"file_path": "query.py"},
+            }
+        ]
         set_store(store)
 
-        with patch("src.api.memory_api._try_import_qdrant") as mock_qdrant:
-            qm = MagicMock()
-            mock_qdrant.return_value = (MagicMock(), qm)
-            r = await client.get("/api/v1/memory?project_id=p1")
+        r = await client.get("/api/v1/memory?project_id=p1")
 
         assert r.status_code == 200
         data = r.json()
@@ -91,6 +65,7 @@ class TestListPatterns:
         assert item["category"] == "error_pattern"
         assert "SQL injection" in item["content"]
         assert item["metadata"]["file_path"] == "query.py"
+        store.list_patterns.assert_awaited_once_with("p1", "", 50)
 
     async def test_list_patterns_unavailable(self, memory_app):
         client, set_store = memory_app
@@ -110,6 +85,36 @@ class TestListPatterns:
         r = await client.get("/api/v1/memory?project_id=p1")
         assert r.status_code == 503
 
+    async def test_list_patterns_filters_by_category(self, memory_app):
+        """Verify category parameter is forwarded to store.list_patterns."""
+        client, set_store = memory_app
+
+        store = AsyncMock()
+        store.is_available.return_value = True
+        store.list_patterns.return_value = []
+        set_store(store)
+
+        r = await client.get("/api/v1/memory?project_id=p1&category=error_pattern")
+
+        assert r.status_code == 200
+        # Verify both project_id and category were passed through correctly
+        store.list_patterns.assert_awaited_once_with("p1", "error_pattern", 50)
+
+    async def test_list_patterns_limit_cap(self, memory_app):
+        """Verify limit is passed to store; capping happens inside MemoryStore."""
+        client, set_store = memory_app
+
+        store = AsyncMock()
+        store.is_available.return_value = True
+        store.list_patterns.return_value = []
+        set_store(store)
+
+        r = await client.get("/api/v1/memory?limit=1000")
+
+        assert r.status_code == 200
+        # API passes limit as-is; MemoryStore enforces the 500 cap internally
+        store.list_patterns.assert_awaited_once_with("", "", 1000)
+
 
 class TestDeletePattern:
     async def test_delete_pattern_success(self, memory_app):
@@ -117,45 +122,24 @@ class TestDeletePattern:
 
         store = AsyncMock()
         store.is_available.return_value = True
-        store._collection = "reviewer_memory"
-
-        mock_client = AsyncMock()
-        store._get_client.return_value = mock_client
-        store._ensure_collection = AsyncMock()
-
-        point = _make_point("uuid-del", {"project_id": "p1", "category": "error_pattern", "content": "x"})
-        mock_client.retrieve.return_value = [point]
-        mock_client.delete = AsyncMock()
-
+        store.delete_pattern.return_value = True
         set_store(store)
 
-        with patch("src.api.memory_api._try_import_qdrant") as mock_qdrant:
-            qm = MagicMock()
-            mock_qdrant.return_value = (MagicMock(), qm)
-            r = await client.delete("/api/v1/memory/uuid-del")
+        r = await client.delete("/api/v1/memory/uuid-del")
 
         assert r.status_code == 200
         assert r.json()["status"] == "deleted"
-        mock_client.delete.assert_called_once()
+        store.delete_pattern.assert_awaited_once_with("uuid-del")
 
     async def test_delete_pattern_not_found(self, memory_app):
         client, set_store = memory_app
 
         store = AsyncMock()
         store.is_available.return_value = True
-        store._collection = "reviewer_memory"
-
-        mock_client = AsyncMock()
-        store._get_client.return_value = mock_client
-        store._ensure_collection = AsyncMock()
-        mock_client.retrieve.return_value = []  # not found
-
+        store.delete_pattern.return_value = False
         set_store(store)
 
-        with patch("src.api.memory_api._try_import_qdrant") as mock_qdrant:
-            qm = MagicMock()
-            mock_qdrant.return_value = (MagicMock(), qm)
-            r = await client.delete("/api/v1/memory/no-such-id")
+        r = await client.delete("/api/v1/memory/no-such-id")
 
         assert r.status_code == 404
 
@@ -176,27 +160,15 @@ class TestListProjects:
 
         store = AsyncMock()
         store.is_available.return_value = True
-        store._collection = "reviewer_memory"
-
-        mock_client = AsyncMock()
-        store._get_client.return_value = mock_client
-        store._ensure_collection = AsyncMock()
-
-        p1 = _make_point("id-1", {"project_id": "proj-alpha"})
-        p2 = _make_point("id-2", {"project_id": "proj-beta"})
-        p3 = _make_point("id-3", {"project_id": "proj-alpha"})  # duplicate
-        mock_client.scroll.return_value = ([p1, p2, p3], None)
-
+        store.list_projects.return_value = ["proj-alpha", "proj-beta"]
         set_store(store)
 
-        with patch("src.api.memory_api._try_import_qdrant") as mock_qdrant:
-            qm = MagicMock()
-            mock_qdrant.return_value = (MagicMock(), qm)
-            r = await client.get("/api/v1/memory/projects")
+        r = await client.get("/api/v1/memory/projects")
 
         assert r.status_code == 200
         projects = r.json()
         assert sorted(projects) == ["proj-alpha", "proj-beta"]
+        store.list_projects.assert_awaited_once()
 
     async def test_list_projects_unavailable(self, memory_app):
         client, set_store = memory_app
