@@ -793,3 +793,178 @@ class TestBuildDiffContentMap:
         m = _build_diff_content_map(diff)
         # deleted line has no new_line entry
         assert 3 not in m
+
+
+# ---------------------------------------------------------------------------
+# Tests for review_job_v2 memory integration
+# ---------------------------------------------------------------------------
+
+
+def _make_v2_cfg(memory_enabled: bool = False):
+    """Build a minimal AppConfig for v2 pipeline tests."""
+    from src.config import AppConfig, GitLabConfig, MemoryConfig, ModelConfig, Provider, ReviewConfig
+
+    return AppConfig(
+        providers=[Provider(id="p", name="P", type="ollama", url="http://x", active=True)],
+        model=ModelConfig(provider_id="p", name="test-model"),
+        gitlab=GitLabConfig(url="http://gitlab"),
+        review=ReviewConfig(pipeline_v2=True, prompts_dir="prompts"),
+        memory=MemoryConfig(
+            enabled=memory_enabled,
+            qdrant_url="http://fake-qdrant:6333",
+            collection="test",
+            top_k=3,
+        ),
+    )
+
+
+def _make_v2_gitlab_mock(mock_mr, mock_diffs):
+    """Build a fully mocked GitLabClient for v2 reviews."""
+    gl = AsyncMock()
+    gl.get_mr.return_value = mock_mr
+    gl.get_diffs.return_value = mock_diffs
+    gl.post_mr_note = AsyncMock()
+    gl.aclose = AsyncMock()
+    return gl
+
+
+class TestMemoryV2:
+    """Tests for review_job_v2 memory recall/remember integration."""
+
+    @pytest.mark.asyncio
+    async def test_review_job_v2_memory_disabled_skips_store(
+        self, reviewer, db, mock_mr, mock_diffs
+    ):
+        """When memory.enabled=False, MemoryStore.recall and remember must not be called."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from src.pipeline import ReviewRole, RoleResult
+        from src.reviewer import set_database, set_memory_store
+
+        cfg = _make_v2_cfg(memory_enabled=False)
+        mock_gitlab = _make_v2_gitlab_mock(mock_mr, mock_diffs)
+        mock_llm = AsyncMock()
+        mock_llm.aclose = AsyncMock()
+
+        # Mock memory store — should NOT be called
+        mock_memory = AsyncMock()
+        mock_memory.recall = AsyncMock(return_value=[])
+        mock_memory.remember = AsyncMock()
+
+        # Mock PipelineManager
+        fake_pm_instance = AsyncMock()
+        fake_pm_instance.run = AsyncMock(
+            return_value=[
+                RoleResult(role=ReviewRole.REVIEWER, findings="looks good", blocking_count=0),
+            ]
+        )
+        FakePipelineManager = MagicMock(return_value=fake_pm_instance)
+        FakePipelineManager.detect_stack = MagicMock(return_value="python")
+
+        set_database(db)
+        set_memory_store(mock_memory)
+
+        try:
+            with (
+                patch("src.reviewer._make_gitlab_client", return_value=mock_gitlab),
+                patch("src.reviewer._make_llm_client", return_value=mock_llm),
+                patch("src.reviewer.get_config", return_value=cfg),
+                patch("src.reviewer.get_agents_md", AsyncMock(return_value="")),
+                patch("src.reviewer.get_docs_context", AsyncMock(return_value="")),
+                patch("src.reviewer.get_security_baseline", AsyncMock(return_value="")),
+                patch("src.reviewer.get_task_context", AsyncMock(return_value="")),
+                patch("src.reviewer.get_dynamic_context", AsyncMock(return_value="")),
+                patch("src.reviewer.PipelineManager", FakePipelineManager),
+                patch("src.reviewer._notify", AsyncMock()),
+                patch("src.reviewer._metrics") as mock_metrics,
+            ):
+                mock_metrics.record_review = MagicMock()
+                await reviewer.review_job_v2(ReviewJob(project_id=42, mr_iid=7))
+        finally:
+            set_memory_store(None)
+
+        mock_memory.recall.assert_not_called()
+        mock_memory.remember.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_review_job_v2_memory_enabled_correct_order(
+        self, reviewer, db, mock_mr, mock_diffs
+    ):
+        """recall() called before pipeline, remember() called after with blocking findings."""
+        from unittest.mock import AsyncMock, MagicMock, call, patch
+
+        from src.pipeline import ReviewRole, RoleResult
+        from src.reviewer import set_database, set_memory_store
+
+        cfg = _make_v2_cfg(memory_enabled=True)
+        mock_gitlab = _make_v2_gitlab_mock(mock_mr, mock_diffs)
+        mock_llm = AsyncMock()
+        mock_llm.aclose = AsyncMock()
+
+        # Track call order across recall / pm.run / remember
+        call_order: list[str] = []
+
+        async def recall_side_effect(*args, **kwargs):
+            call_order.append("recall")
+            return []
+
+        async def remember_side_effect(*args, **kwargs):
+            call_order.append("remember")
+
+        mock_memory = AsyncMock()
+        mock_memory.recall = AsyncMock(side_effect=recall_side_effect)
+        mock_memory.remember = AsyncMock(side_effect=remember_side_effect)
+
+        async def pm_run_side_effect(ctx):
+            call_order.append("pm.run")
+            return [
+                RoleResult(
+                    role=ReviewRole.SECURITY,
+                    findings="[BLOCKING] hardcoded secret found",
+                    blocking_count=1,
+                ),
+                RoleResult(role=ReviewRole.REVIEWER, findings="final review", blocking_count=0),
+            ]
+
+        fake_pm_instance = AsyncMock()
+        fake_pm_instance.run = AsyncMock(side_effect=pm_run_side_effect)
+        FakePipelineManager = MagicMock(return_value=fake_pm_instance)
+        FakePipelineManager.detect_stack = MagicMock(return_value="python")
+
+        set_database(db)
+        set_memory_store(mock_memory)
+
+        try:
+            with (
+                patch("src.reviewer._make_gitlab_client", return_value=mock_gitlab),
+                patch("src.reviewer._make_llm_client", return_value=mock_llm),
+                patch("src.reviewer.get_config", return_value=cfg),
+                patch("src.reviewer.get_agents_md", AsyncMock(return_value="")),
+                patch("src.reviewer.get_docs_context", AsyncMock(return_value="")),
+                patch("src.reviewer.get_security_baseline", AsyncMock(return_value="")),
+                patch("src.reviewer.get_task_context", AsyncMock(return_value="")),
+                patch("src.reviewer.get_dynamic_context", AsyncMock(return_value="")),
+                patch("src.reviewer.PipelineManager", FakePipelineManager),
+                patch("src.reviewer._notify", AsyncMock()),
+                patch("src.reviewer._metrics") as mock_metrics,
+            ):
+                mock_metrics.record_review = MagicMock()
+                await reviewer.review_job_v2(ReviewJob(project_id=42, mr_iid=7))
+        finally:
+            set_memory_store(None)
+
+        # recall must have been called
+        mock_memory.recall.assert_called_once()
+        recall_kwargs = mock_memory.recall.call_args.kwargs
+        assert recall_kwargs.get("project_id") == "42"
+
+        # remember must have been called (blocking_count > 0)
+        mock_memory.remember.assert_called_once()
+
+        # Order: recall → pm.run → remember
+        assert call_order.index("recall") < call_order.index("pm.run"), (
+            f"recall must happen BEFORE pm.run, got order: {call_order}"
+        )
+        assert call_order.index("pm.run") < call_order.index("remember"), (
+            f"pm.run must happen BEFORE remember, got order: {call_order}"
+        )

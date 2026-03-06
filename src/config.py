@@ -126,6 +126,15 @@ class CacheConfig(BaseModel):
     valkey_url: str = "redis://localhost:6379"
 
 
+class MemoryConfig(BaseModel):
+    """Qdrant-backed reviewer memory settings."""
+
+    enabled: bool = False
+    qdrant_url: str = "http://qdrant:6333"
+    collection: str = "reviewer_memory"
+    top_k: int = 5
+
+
 class ReviewConfig(BaseModel):
     """v2 pipeline settings."""
 
@@ -185,6 +194,7 @@ class AppConfig(BaseModel):
         ]
     )
     review: ReviewConfig = Field(default_factory=ReviewConfig)
+    memory: MemoryConfig = Field(default_factory=MemoryConfig)
     ui: UIConfig = Field(default_factory=UIConfig)
     server: ServerConfig = Field(default_factory=ServerConfig)
 

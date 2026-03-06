@@ -401,3 +401,16 @@ Browser ─────────────┤ GET /ui/                     
 | v0.8 | Debounce + Dedup | Latest-wins supersede, diff hash dedup in reviewer, delayed retry | ✅ Done |
 | v0.9 | Valkey | Distributed queue+cache, multi-instance | ✅ Done |
 | v0.10 | Kafka | High-volume event streaming (aiokafka, KRaft docker-compose profile) | ✅ Done |
+| v0.11 | Qdrant Memory | MemoryStore (vector search), MemoryConfig, integration in review_job_v2 | ✅ Done |
+| v0.11 | docker-compose v2 | Qdrant + llama-server profiles, docker-compose.full.yml full stack | ✅ Done |
+
+---
+
+## Следующие шаги (v0.12+)
+
+- [ ] **Memory UI** — вкладка "Memory" в Web UI: просмотр/удаление паттернов по проекту
+- [ ] **Memory seeding** — при первом старте залить историю из SQLite в Qdrant (bootstrap)
+- [ ] **REVIEW_HISTORY category** — сохранять историю ревью по файлу (не только паттерны)
+- [ ] **Inline recall** — при ревью файла X, recall истории именно этого файла (`query=file_path`)
+- [ ] **llama-server GPU profiles** — отдельные compose профили для CUDA/ROCm/Vulkan
+- [ ] **Helm chart обновление** — добавить Qdrant sidecar/dependency в values.yaml

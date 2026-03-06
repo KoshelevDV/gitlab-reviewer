@@ -46,6 +46,40 @@ services:
       - valkey_data:/data
     command: valkey-server --save 60 1 --loglevel warning
 
+  # Qdrant — vector memory for review patterns.
+  # Enable with: docker compose --profile memory up -d
+  qdrant:
+    image: qdrant/qdrant:latest
+    profiles: [memory]
+    restart: unless-stopped
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # llama-server (llama.cpp HTTP) — local LLM backend alternative to Ollama.
+  # Enable with: docker compose --profile llamacpp up -d
+  llama-server:
+    image: ghcr.io/ggerganov/llama.cpp:server
+    profiles: [llamacpp]
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./models:/models:ro
+    command: ["--model", "/models/model.gguf", "--port", "8080", "--host", "0.0.0.0", "--ctx-size", "32768"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
   # Kafka (KRaft mode, no ZooKeeper) — optional high-volume event streaming.
   # Enable with: docker compose --profile kafka up -d
   # After start, create topic manually or let auto-creation handle it.
@@ -80,3 +114,5 @@ volumes:
   ollama_data:
   valkey_data:
   kafka_data:
+  qdrant_data:
+  llama_models:
