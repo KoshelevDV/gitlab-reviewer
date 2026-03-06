@@ -1391,6 +1391,69 @@
     </div>
   </div>
 
+  <!-- ───────────────── MEMORY ───────────────── -->
+  <div x-show="activeTab === 'memory'" x-init="$watch('activeTab', v => v==='memory' && loadMemoryProjects())">
+    <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; margin-bottom:16px;">
+      <div class="section-title" style="margin-bottom:0;">🧠 Memory Patterns</div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+        <select class="inp" style="width:180px;" x-model="memoryFilter.project_id" @change="loadMemoryPatterns()">
+          <option value="">All projects</option>
+          <template x-for="pid in memoryProjects" :key="pid">
+            <option :value="pid" x-text="pid"></option>
+          </template>
+        </select>
+        <select class="inp" style="width:160px;" x-model="memoryFilter.category" @change="loadMemoryPatterns()">
+          <option value="">All categories</option>
+          <option value="error_pattern">error_pattern</option>
+          <option value="review_history">review_history</option>
+        </select>
+        <button class="btn btn-ghost btn-sm" @click="loadMemoryProjects(); loadMemoryPatterns()">↻ Refresh</button>
+      </div>
+    </div>
+
+    <!-- Unavailable banner -->
+    <div x-show="memoryUnavailable" class="card" style="text-align:center; padding:32px; color:var(--text-3);">
+      <div style="font-size:2rem; margin-bottom:10px;">🔌</div>
+      <div style="font-size:.95rem; color:var(--yellow);">Memory store unavailable</div>
+      <div style="font-size:.82rem; margin-top:6px;">Qdrant is not reachable or memory is disabled.</div>
+    </div>
+
+    <!-- Table -->
+    <div x-show="!memoryUnavailable" class="card" style="padding:0; overflow:hidden;">
+      <table class="tbl">
+        <thead>
+          <tr>
+            <th>Category</th>
+            <th>Content</th>
+            <th>File</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="m in memoryPatterns" :key="m.id">
+            <tr>
+              <td>
+                <span class="badge"
+                  :class="m.category==='error_pattern' ? 'badge-red' : 'badge-blue'"
+                  x-text="m.category"></span>
+              </td>
+              <td style="font-size:.82rem; max-width:420px; word-break:break-word;"
+                x-text="m.content?.substring(0,100) + (m.content?.length > 100 ? '…' : '')"></td>
+              <td class="mono" style="font-size:.75rem; color:var(--text-3);" x-text="m.metadata?.file_path || '—'"></td>
+              <td>
+                <button class="btn btn-ghost btn-sm" style="color:var(--red);"
+                  @click="deleteMemoryPattern(m.id)">Delete</button>
+              </td>
+            </tr>
+          </template>
+          <tr x-show="memoryPatterns.length === 0 && !memoryUnavailable">
+            <td colspan="4" style="text-align:center; color:var(--text-3); padding:36px; font-size:.84rem;">No patterns stored</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
   <!-- ───────────────── LOGS ───────────────── -->
   <div x-show="activeTab === 'logs'">
     <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; flex-wrap:wrap; gap:8px;">
@@ -1499,6 +1562,7 @@ function app() {
       { id: 'targets',       label: '🎯 Targets' },
       { id: 'reviews',       label: '📋 Reviews' },
       { id: 'logs',          label: '📜 Logs' },
+      { id: 'memory',        label: '🧠 Memory' },
     ],
 
     config: {
@@ -1557,6 +1621,11 @@ function app() {
     reviewPage: 0,
     reviewPageSize: 20,
     selectedReview: null,
+
+    memoryPatterns: [],
+    memoryProjects: [],
+    memoryFilter: { project_id: '', category: '' },
+    memoryUnavailable: false,
 
     logLines: [],
     logFilter: '',
@@ -1812,6 +1881,38 @@ function app() {
 
     async loadDashboardRecent() {
       try { const r = await fetch('/api/v1/reviews/recent?limit=8'); this.dashboardRecent = await r.json(); } catch (_) {}
+    },
+
+    async loadMemoryProjects() {
+      try {
+        const r = await fetch('/api/v1/memory/projects');
+        if (r.status === 503) { this.memoryUnavailable = true; return; }
+        this.memoryUnavailable = false;
+        this.memoryProjects = await r.json();
+        await this.loadMemoryPatterns();
+      } catch (e) { this.memoryUnavailable = true; }
+    },
+
+    async loadMemoryPatterns() {
+      try {
+        const params = new URLSearchParams({ limit: 100 });
+        if (this.memoryFilter.project_id) params.set('project_id', this.memoryFilter.project_id);
+        if (this.memoryFilter.category) params.set('category', this.memoryFilter.category);
+        const r = await fetch(`/api/v1/memory?${params}`);
+        if (r.status === 503) { this.memoryUnavailable = true; return; }
+        this.memoryUnavailable = false;
+        const data = await r.json();
+        this.memoryPatterns = data.items || [];
+      } catch (e) { this.memoryUnavailable = true; }
+    },
+
+    async deleteMemoryPattern(id) {
+      if (!confirm('Delete this memory pattern?')) return;
+      try {
+        const r = await fetch(`/api/v1/memory/${id}`, { method: 'DELETE' });
+        if (r.ok) { this.showToast('Pattern deleted'); await this.loadMemoryPatterns(); }
+        else { const d = await r.json(); this.showToast(d.error || 'Delete failed', 'error'); }
+      } catch (e) { this.showToast('Network error: ' + e, 'error'); }
     },
 
     async loadReviews() {
