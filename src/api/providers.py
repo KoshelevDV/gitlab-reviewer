@@ -12,10 +12,17 @@ from ..llm_client import ModelInfo, get_model_info, list_models
 router = APIRouter(prefix="/api/v1/providers", tags=["providers"])
 
 
+def _mask_provider(p) -> dict:
+    d = p.model_dump()
+    if d.get("api_key"):
+        d["api_key"] = "****"
+    return d
+
+
 @router.get("")
 async def list_providers() -> JSONResponse:
     cfg = get_config()
-    return JSONResponse([p.model_dump() for p in cfg.providers])
+    return JSONResponse([_mask_provider(p) for p in cfg.providers])
 
 
 @router.post("")

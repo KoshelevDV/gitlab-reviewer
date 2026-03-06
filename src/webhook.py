@@ -126,7 +126,7 @@ async def _handle_note_hook(body: dict[str, Any], cfg) -> JSONResponse:  # type:
     # Execute slash command asynchronously (background task)
     import asyncio
 
-    asyncio.get_event_loop().create_task(_run_slash_command(cmd, raw_project_id, raw_mr_iid, cfg))
+    asyncio.create_task(_run_slash_command(cmd, raw_project_id, raw_mr_iid, cfg))
     return JSONResponse(
         {
             "status": "accepted",

@@ -217,7 +217,7 @@ class PipelineManager:
         return LLMClient(
             base_url=provider.url,
             model=role_model.name,
-            timeout=role_model.timeout if role_model.timeout else 300,
+            timeout=role_model.timeout,
             api_key=provider.api_key.get_secret_value(),
         )
 
