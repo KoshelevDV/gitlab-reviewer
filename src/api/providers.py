@@ -12,7 +12,7 @@ from ..llm_client import ModelInfo, get_model_info, list_models
 router = APIRouter(prefix="/api/v1/providers", tags=["providers"])
 
 
-def _mask_provider(p: "Provider") -> dict:
+def _mask_provider(p: Provider) -> dict:
     # mode="json" serializes SecretStr as "**********" (string), Enum → str, etc.
     d = p.model_dump(mode="json")
     if d.get("api_key"):
@@ -98,7 +98,8 @@ async def get_models(provider_id: str) -> JSONResponse:
     if not provider:
         raise HTTPException(status_code=404, detail=f"Provider '{provider_id}' not found")
 
-    models: list[ModelInfo] = await list_models(provider.url, provider.type.value, provider.api_key.get_secret_value())
+    api_key = provider.api_key.get_secret_value()
+    models: list[ModelInfo] = await list_models(provider.url, provider.type.value, api_key)
     return JSONResponse([{"id": m.id, "context_length": m.context_length} for m in models])
 
 
@@ -110,7 +111,8 @@ async def get_model_info_endpoint(provider_id: str, model_name: str) -> JSONResp
     if not provider:
         raise HTTPException(status_code=404, detail=f"Provider '{provider_id}' not found")
 
-    info = await get_model_info(provider.url, model_name, provider.type.value, provider.api_key.get_secret_value())
+    api_key = provider.api_key.get_secret_value()
+    info = await get_model_info(provider.url, model_name, provider.type.value, api_key)
     return JSONResponse(
         {
             "id": info.id,

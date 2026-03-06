@@ -10,9 +10,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.memory_store import MemoryCategory, MemoryRecord, MemoryStore
 from src.config import MemoryConfig
-
+from src.memory_store import MemoryCategory, MemoryRecord, MemoryStore
 
 # ---------------------------------------------------------------------------
 # Helpers

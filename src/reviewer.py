@@ -27,13 +27,20 @@ from urllib.parse import urlparse
 
 from . import metrics as _metrics
 from .config import AppConfig, ReviewTarget, get_config
-from .memory_store import MemoryCategory, MemoryRecord, MemoryStore
-from .context_builder import MRContext, get_agents_md, get_docs_context, get_dynamic_context, get_security_baseline, get_task_context
+from .context_builder import (
+    MRContext,
+    get_agents_md,
+    get_docs_context,
+    get_dynamic_context,
+    get_security_baseline,
+    get_task_context,
+)
 from .db import Database, ReviewRecord
 from .gitlab_client import FileDiff, GitLabClient, MRInfo
 from .llm_client import LLMClient
+from .memory_store import MemoryCategory, MemoryRecord, MemoryStore
 from .notifier import notify as _dispatch_notify
-from .pipeline import PipelineManager, RoleResult, ReviewRole
+from .pipeline import PipelineManager, ReviewRole, RoleResult
 from .prompt_engine import PromptEngine
 from .queue_manager import ReviewJob
 
@@ -49,7 +56,7 @@ def _safe_mr_url(url: str) -> str:
     return url
 
 
-def _safe_mr_title(title: str) -> str:
+def _safe_mr_title(title: str | None) -> str:
     """Escape markdown chars that could break the link text."""
     title = title or ""
     return title.replace("\\", "\\\\").replace("[", "\\[").replace("]", "\\]")
@@ -360,7 +367,7 @@ class Reviewer:
             # Only maintainers can push there, so AGENTS.md/docs/ are not attacker-controlled.
             # source_branch is used only for dynamic context (full file content of changed files).
             trusted_ref = mr.target_branch   # main/master — only maintainers push here
-            source_ref = mr.source_branch    # PR author's branch — untrusted for static context
+            _source_ref = mr.source_branch    # PR author's branch — untrusted for static context
 
             p = PromptEngine(prompts_dir=Path(review_cfg.prompts_dir))
 
@@ -450,7 +457,8 @@ class Reviewer:
             )
             parallel_results = [r for r in results if r.role != ReviewRole.REVIEWER]
 
-            risk_score = _compute_risk_score(mr, diffs, reviewer_result.findings if reviewer_result else "")
+            reviewer_findings = reviewer_result.findings if reviewer_result else ""
+            risk_score = _compute_risk_score(mr, diffs, reviewer_findings)
             record.risk_score = risk_score
             record.review_text = reviewer_result.findings if reviewer_result else ""
 
@@ -477,7 +485,11 @@ class Reviewer:
                                 category=MemoryCategory.ERROR_PATTERN,
                                 content=result.findings,
                                 metadata={
-                                    "role": result.role.value if hasattr(result.role, "value") else str(result.role),
+                                    "role": (
+                                        result.role.value
+                                        if hasattr(result.role, "value")
+                                        else str(result.role)
+                                    ),
                                     "mr_iid": job.mr_iid,
                                     "severity": "blocking",
                                 },
@@ -1227,9 +1239,9 @@ def _format_summary_comment(summary_text: str, inline_count: int) -> str:
 
 
 def _build_v2_comment(
-    mr: "MRInfo",
-    parallel_results: "list[RoleResult]",
-    reviewer_result: "RoleResult | None",
+    mr: MRInfo,
+    parallel_results: list[RoleResult],
+    reviewer_result: RoleResult | None,
     risk_score: int,
 ) -> str:
     """Build the composite GitLab comment for v2 pipeline results."""
@@ -1250,7 +1262,7 @@ def _build_v2_comment(
     }
 
     sections: list[str] = [
-        f"## 🤖 Automated Code Review (v2 Pipeline)\n",
+        "## 🤖 Automated Code Review (v2 Pipeline)\n",
         f"**Risk Score:** {risk_label} ({risk_score}/100)\n",
     ]
 
@@ -1272,7 +1284,8 @@ def _build_v2_comment(
         blocking_note = f" ⚠️ {result.blocking_count} blocking" if result.blocking_count else ""
         sections.append(
             f"<details>\n"
-            f"<summary>{emoji} <b>{result.role.value.title()} Review</b>{blocking_note}</summary>\n\n"
+            f"<summary>{emoji} <b>{result.role.value.title()} Review</b>"
+            f"{blocking_note}</summary>\n\n"
             f"{result.findings}\n\n"
             f"</details>\n"
         )

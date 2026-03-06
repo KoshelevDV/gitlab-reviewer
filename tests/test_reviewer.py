@@ -802,7 +802,14 @@ class TestBuildDiffContentMap:
 
 def _make_v2_cfg(memory_enabled: bool = False):
     """Build a minimal AppConfig for v2 pipeline tests."""
-    from src.config import AppConfig, GitLabConfig, MemoryConfig, ModelConfig, Provider, ReviewConfig
+    from src.config import (
+        AppConfig,
+        GitLabConfig,
+        MemoryConfig,
+        ModelConfig,
+        Provider,
+        ReviewConfig,
+    )
 
     return AppConfig(
         providers=[Provider(id="p", name="P", type="ollama", url="http://x", active=True)],
@@ -891,7 +898,7 @@ class TestMemoryV2:
         self, reviewer, db, mock_mr, mock_diffs
     ):
         """recall() called before pipeline, remember() called after with blocking findings."""
-        from unittest.mock import AsyncMock, MagicMock, call, patch
+        from unittest.mock import AsyncMock, MagicMock, patch
 
         from src.pipeline import ReviewRole, RoleResult
         from src.reviewer import set_database, set_memory_store
@@ -1026,6 +1033,7 @@ class TestSummaryCommentMrUrl:
         comment = mock_gitlab.post_mr_note.call_args[0][2]
         assert "[MR #7" in comment, f"Expected MR link in comment, got:\n{comment[:300]}"
         assert "http://gitlab.example.com/mr/7" in comment
+        assert comment.startswith("🔍 [MR"), f"Expected link at start, got:\n{comment[:200]}"
 
     async def test_summary_no_mr_link_when_url_empty(
         self, reviewer, mock_gitlab, mock_llm, db, cfg_with_target, mock_mr
@@ -1042,7 +1050,9 @@ class TestSummaryCommentMrUrl:
 
         mock_gitlab.post_mr_note.assert_called_once()
         comment = mock_gitlab.post_mr_note.call_args[0][2]
-        assert "[MR #7" not in comment, f"Did not expect MR link when url is empty:\n{comment[:300]}"
+        assert "[MR #7" not in comment, (
+            f"Did not expect MR link when url is empty:\n{comment[:300]}"
+        )
 
     async def test_summary_no_mr_link_when_url_has_javascript_scheme(
         self, reviewer, mock_gitlab, mock_llm, db, cfg_with_target, mock_mr

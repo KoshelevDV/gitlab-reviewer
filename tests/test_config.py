@@ -44,6 +44,7 @@ def test_per_role_models_yaml_parsing():
 def test_provider_url_scheme_validator_rejects_invalid():
     """Fix 5: Provider must reject non-http/https URLs."""
     from pydantic import ValidationError
+
     from src.config import Provider
 
     with pytest.raises(ValidationError, match="http or https"):
@@ -69,6 +70,7 @@ def test_provider_url_scheme_validator_accepts_https():
 def test_provider_api_key_is_secret_str():
     """Fix 6: api_key is SecretStr — not revealed in repr/str."""
     from pydantic import SecretStr
+
     from src.config import Provider
 
     p = Provider(id="x", name="X", url="http://localhost:11434", api_key="super-secret")

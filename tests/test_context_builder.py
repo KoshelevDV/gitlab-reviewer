@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 import respx
@@ -23,7 +23,7 @@ BASE = "http://gitlab.test"
 
 @pytest.fixture
 def client():
-    c = GitLabClient(base_url=BASE, token="test-token", timeout=5)
+    c = GitLabClient(base_url=BASE, token="test-token", timeout=5)  # noqa: S106
     yield c
 
 
@@ -313,7 +313,6 @@ class TestGetSecurityBaseline:
     @pytest.mark.asyncio
     async def test_get_security_baseline_filters_by_keywords(self) -> None:
         """Only files containing security keywords are included."""
-        from src.context_builder import get_security_baseline
 
         tree = [
             {"path": "docs/threat-model.md", "type": "blob"},
@@ -341,7 +340,6 @@ class TestGetSecurityBaseline:
     @pytest.mark.asyncio
     async def test_get_security_baseline_empty_when_no_docs(self) -> None:
         """Returns empty string when docs/ doesn't exist."""
-        from src.context_builder import get_security_baseline
 
         client = MagicMock()
         client.list_tree = AsyncMock(return_value=[])

@@ -27,13 +27,13 @@ from .api.health import set_database as health_set_db
 from .api.health import set_queue_manager as health_set_queue
 from .api.logs_api import router as logs_router
 from .api.logs_api import set_log_buffer
+from .api.memory_api import router as memory_router
+from .api.memory_api import set_memory_store as memory_api_set_store
 from .api.metrics_api import router as metrics_router
 from .api.notifications_api import router as notifications_router
 from .api.providers import router as providers_router
 from .api.queue_api import router as queue_router
 from .api.queue_api import set_queue_manager
-from .api.memory_api import router as memory_router
-from .api.memory_api import set_memory_store as memory_api_set_store
 from .api.reviews import router as reviews_router
 from .api.reviews import set_database as reviews_set_db
 from .api.reviews import set_queue_manager as reviews_set_queue
@@ -42,11 +42,10 @@ from .backends import create_queue_manager
 from .config import CONFIG_PATH, reload_config
 from .db import Database
 from .log_buffer import setup_log_buffer
-from .prompt_engine import PromptEngine
 from .memory_store import MemoryStore
-from .reviewer import Reviewer
+from .prompt_engine import PromptEngine
+from .reviewer import Reviewer, set_memory_store
 from .reviewer import set_database as reviewer_set_db
-from .reviewer import set_memory_store
 from .ui.router import mount_ui
 from .webhook import make_webhook_router
 from .webhook import set_queue_manager as webhook_set_queue

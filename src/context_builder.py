@@ -288,7 +288,11 @@ async def get_task_context(
             # Fall through to MR description fallback
 
     # Fallback: use MR title + description
-    logger.debug("No linked issue found for project=%s MR!%d — using MR description", project_id, mr_iid)
+    logger.debug(
+        "No linked issue found for project=%s MR!%d — using MR description",
+        project_id,
+        mr_iid,
+    )
     return f"## Task: MR !{mr_iid} — {mr_title}\n\n{mr_description}"
 
 
@@ -359,7 +363,8 @@ async def get_dynamic_context(
             if not _TEST_PATTERNS.search(candidate_name):
                 continue
             # Match test files related to the changed file
-            if base_name.lower() not in candidate_name.lower() and not candidate_name.lower().startswith("test_"):
+            name_lower = candidate_name.lower()
+            if base_name.lower() not in name_lower and not name_lower.startswith("test_"):
                 continue
             test_path = tree_item["path"]
             if test_path == file_path:

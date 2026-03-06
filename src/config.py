@@ -242,7 +242,8 @@ class AppConfig(BaseModel):
         llm_key = os.getenv("GLR_LLM_API_KEY", "")
         if llm_key:
             for p in self.providers:
-                if not p.api_key.get_secret_value() and (p.id == self.model.provider_id or not self.model.provider_id):
+                is_active = p.id == self.model.provider_id or not self.model.provider_id
+                if not p.api_key.get_secret_value() and is_active:
                     p.api_key = SecretStr(llm_key)
                     break
         return self
