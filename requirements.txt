@@ -1,0 +1,21 @@
+# Core dependencies (also in pyproject.toml)
+fastapi>=0.115
+uvicorn[standard]>=0.30
+httpx>=0.27
+pydantic>=2.7
+pydantic-settings>=2.3
+pyyaml>=6.0
+aiofiles>=23.0
+aiosqlite>=0.20
+prometheus-client>=0.20
+tenacity>=8.2
+
+# Optional: Valkey (Redis-compatible) queue/cache backend
+# redis>=4.2
+
+# Optional: Kafka high-volume queue backend
+# aiokafka>=0.10
+
+# Memory store (Qdrant vector DB + local embeddings)
+qdrant-client>=1.9.0
+sentence-transformers>=3.0.0

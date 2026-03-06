@@ -1,0 +1,82 @@
+# Full stack: reviewer + Qdrant memory + llama-server
+# Usage: docker compose -f docker-compose.full.yml up -d
+#
+# All three services are enabled by default (no profiles required).
+# The reviewer waits for both Qdrant and llama-server to be healthy before starting.
+#
+# Required: place your GGUF model at ./models/model.gguf
+# Required: copy .env.example to .env and fill in GLR_GITLAB_TOKEN + GLR_WEBHOOK_SECRET
+
+services:
+
+  # Qdrant — vector memory for review patterns
+  qdrant:
+    image: qdrant/qdrant:latest
+    restart: unless-stopped
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # llama-server (llama.cpp HTTP) — local LLM backend
+  llama-server:
+    image: ghcr.io/ggerganov/llama.cpp:server
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./models:/models:ro
+    command:
+      - "--model"
+      - "/models/model.gguf"
+      - "--port"
+      - "8080"
+      - "--host"
+      - "0.0.0.0"
+      - "--ctx-size"
+      - "32768"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  # gitlab-reviewer — the main review service
+  gitlab-reviewer:
+    build: .
+    image: gitlab-reviewer:latest
+    restart: unless-stopped
+    depends_on:
+      qdrant:
+        condition: service_healthy
+      llama-server:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    env_file: .env
+    volumes:
+      - ./config.yml:/app/config.yml
+      - ./prompts:/app/prompts:ro
+      - reviewer_data:/app/data
+    environment:
+      # Point to local llama-server instead of Ollama
+      - GLR_LLM_URL=http://llama-server:8080
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  reviewer_data:
+  qdrant_data:

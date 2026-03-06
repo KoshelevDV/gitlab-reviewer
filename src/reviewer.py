@@ -26,6 +26,7 @@ from typing import Protocol, runtime_checkable
 
 from . import metrics as _metrics
 from .config import AppConfig, ReviewTarget, get_config
+from .memory_store import MemoryCategory, MemoryRecord, MemoryStore
 from .context_builder import MRContext, get_agents_md, get_docs_context, get_dynamic_context, get_security_baseline, get_task_context
 from .db import Database, ReviewRecord
 from .gitlab_client import FileDiff, GitLabClient, MRInfo
@@ -352,7 +353,35 @@ class Reviewer:
                 ),
             )
 
-            project_context = "\n\n".join(filter(None, [agents_md, docs_ctx]))
+            # ----------------------------------------------------------------
+            # 3b. Recall past patterns from memory (if enabled)
+            # ----------------------------------------------------------------
+            mem_cfg = cfg.memory
+            memory = MemoryStore(url=mem_cfg.qdrant_url, collection=mem_cfg.collection)
+            past_patterns: list[MemoryRecord] = []
+            if mem_cfg.enabled:
+                past_patterns = await memory.recall(
+                    project_id=str(job.project_id),
+                    query=f"review findings for {mr.source_branch}",
+                    top_k=mem_cfg.top_k,
+                )
+                if past_patterns:
+                    logger.info(
+                        "memory.recall: project=%s → %d past patterns",
+                        job.project_id,
+                        len(past_patterns),
+                    )
+
+            # Inject past patterns into project context
+            past_section = ""
+            if past_patterns:
+                lines = ["## Past Patterns (from memory)"]
+                for i, rec in enumerate(past_patterns, 1):
+                    lines.append(f"\n### Pattern {i} ({rec.category.value})")
+                    lines.append(rec.content[:500])
+                past_section = "\n".join(lines)
+
+            project_context = "\n\n".join(filter(None, [agents_md, docs_ctx, past_section]))
             raw_diff = _combine_diffs(diffs, annotate=True)
             max_diff_chars = cfg.model.context_size or 32_000
             safe_diff = p.sanitize_untrusted(raw_diff, max_chars=max_diff_chars)
@@ -406,6 +435,25 @@ class Reviewer:
             await gitlab.post_mr_note(job.project_id, job.mr_iid, comment)
             record.status = "posted"
             logger.info("v2 review posted: project=%s MR!%d", job.project_id, job.mr_iid)
+
+            # ----------------------------------------------------------------
+            # 5b. Store blocking findings in memory (if enabled)
+            # ----------------------------------------------------------------
+            if mem_cfg.enabled:
+                for result in results:
+                    if result.blocking_count > 0:
+                        await memory.remember(
+                            MemoryRecord(
+                                project_id=str(job.project_id),
+                                category=MemoryCategory.ERROR_PATTERN,
+                                content=result.findings,
+                                metadata={
+                                    "role": result.role.value if hasattr(result.role, "value") else str(result.role),
+                                    "mr_iid": job.mr_iid,
+                                    "severity": "blocking",
+                                },
+                            )
+                        )
 
         except Exception as exc:
             logger.exception("v2 review failed project=%s MR!%d", job.project_id, job.mr_iid)
