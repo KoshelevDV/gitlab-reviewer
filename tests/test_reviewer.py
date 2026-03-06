@@ -1043,3 +1043,36 @@ class TestSummaryCommentMrUrl:
         mock_gitlab.post_mr_note.assert_called_once()
         comment = mock_gitlab.post_mr_note.call_args[0][2]
         assert "[MR #7" not in comment, f"Did not expect MR link when url is empty:\n{comment[:300]}"
+
+    async def test_summary_no_mr_link_when_url_has_javascript_scheme(
+        self, reviewer, mock_gitlab, mock_llm, db, cfg_with_target, mock_mr
+    ):
+        """javascript: URL must NOT produce a link in summary comment."""
+        mock_mr.web_url = "javascript:alert(1)"
+        set_database(db)
+        with (
+            patch("src.reviewer._make_gitlab_client", return_value=mock_gitlab),
+            patch("src.reviewer._make_llm_client", return_value=mock_llm),
+            patch("src.reviewer.get_config", return_value=cfg_with_target),
+        ):
+            await reviewer.review_job(ReviewJob(project_id=42, mr_iid=7))
+        comment = mock_gitlab.post_mr_note.call_args[0][2]
+        assert "javascript:" not in comment
+        assert "[MR #7" not in comment
+
+    async def test_summary_mr_title_with_brackets_escaped(
+        self, reviewer, mock_gitlab, mock_llm, db, cfg_with_target, mock_mr
+    ):
+        """MR title with ] chars must be escaped in link text."""
+        mock_mr.web_url = "http://gitlab.example.com/mr/7"
+        mock_mr.title = "Fix [bug] in auth"
+        set_database(db)
+        with (
+            patch("src.reviewer._make_gitlab_client", return_value=mock_gitlab),
+            patch("src.reviewer._make_llm_client", return_value=mock_llm),
+            patch("src.reviewer.get_config", return_value=cfg_with_target),
+        ):
+            await reviewer.review_job(ReviewJob(project_id=42, mr_iid=7))
+        comment = mock_gitlab.post_mr_note.call_args[0][2]
+        assert "\\]" in comment or "Fix" in comment  # title escaped and present
+        assert "http://gitlab.example.com/mr/7" in comment
