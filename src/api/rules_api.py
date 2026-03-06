@@ -20,6 +20,8 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/rules", tags=["rules"])
 
+MAX_RULES_BODY = 512 * 1024  # 512 KB — real rules.yml files are well under 10 KB
+
 
 def _rules_path() -> str | None:
     """Return the current rules path (read from webhook module at call time)."""
@@ -79,6 +81,11 @@ async def save_rules(request: Request) -> JSONResponse:
     p = _require_path()
 
     body_bytes = await request.body()
+    if len(body_bytes) > MAX_RULES_BODY:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Request body too large (max {MAX_RULES_BODY // 1024} KB)",
+        )
     yaml_text = body_bytes.decode("utf-8")
 
     # Validate by parsing
@@ -119,6 +126,22 @@ async def validate_rules(yaml_param: str = Query(default="", alias="yaml")) -> J
         return JSONResponse({"valid": True, "error": None, "count": len(config.rules)})
     except ValueError as exc:
         return JSONResponse({"valid": False, "error": str(exc), "count": 0})
+
+
+@router.post("/validate")
+async def validate_rules_post(request: Request) -> JSONResponse:
+    """Validate YAML rules body (POST version for large configs)."""
+    body_bytes = await request.body()
+    if len(body_bytes) > MAX_RULES_BODY:
+        return JSONResponse({"valid": False, "error": "Request body too large", "count": 0})
+    yaml_text = body_bytes.decode("utf-8")
+    if not yaml_text.strip():
+        return JSONResponse({"valid": True, "error": None, "count": 0})
+    try:
+        config = load_rules_from_text(yaml_text)
+        return JSONResponse({"valid": True, "error": None, "count": len(config.rules)})
+    except (ValueError, Exception) as e:
+        return JSONResponse({"valid": False, "error": str(e), "count": 0})
 
 
 # ──────────────────────────────────────────────────────────────────────────────

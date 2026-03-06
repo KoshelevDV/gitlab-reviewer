@@ -18,7 +18,7 @@ from fastapi.responses import JSONResponse
 
 from .config import get_config
 from .queue_manager import QueueManager, ReviewJob
-from .rules import MRContext, RulesEngine, load_rules
+from .rules import ActionType, MRContext, RulesEngine, load_rules
 from .slash_commands import execute_slash_command, parse_slash_command
 
 logger = logging.getLogger(__name__)
@@ -101,13 +101,21 @@ def make_webhook_router() -> APIRouter:
                 target_branch=attrs.get("target_branch", ""),
                 # changed_files and lines_changed require diff fetch — not available here
             )
-            if engine.should_skip(ctx):
-                logger.info(
-                    "MR skipped by automation rule: project=%s MR!%d", project_id, mr_iid
-                )
-                return JSONResponse(
-                    {"status": "skipped_by_rule", "project_id": project_id, "mr_iid": mr_iid}
-                )
+            actions = engine.evaluate(ctx)
+            for action in actions:
+                if action.type == ActionType.SKIP_REVIEW:
+                    logger.info(
+                        "MR skipped by automation rule: project=%s MR!%d", project_id, mr_iid
+                    )
+                    return JSONResponse(
+                        {"status": "skipped_by_rule", "project_id": project_id, "mr_iid": mr_iid}
+                    )
+                else:
+                    logger.warning(
+                        "Automation rule action '%s' is configured but not yet implemented;"
+                        " skipping",
+                        action.type.value,
+                    )
         except Exception:
             logger.exception("Automation rules evaluation failed — continuing without rules")
 

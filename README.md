@@ -361,6 +361,8 @@ rules:
       - type: force_full_review
 ```
 
+> **Note:** `if_files_match` and `if_lines_changed_gt` require diff data not available at webhook time. They will be evaluated post-diff in a future release. Currently effective at webhook phase: `if_author_in`, `if_target_branch`.
+
 ---
 
 **Правила автоматизации (Automation Rules)** позволяют описывать политики в файле `rules.yml` рядом с `config.yml`. Правила вычисляются при постановке MR в очередь (до загрузки диффа) и работают поверх `review_targets`. Условия: `if_files_match` (glob-паттерны), `if_author_in` (список пользователей), `if_target_branch` (точное совпадение ветки), `if_lines_changed_gt` (порог изменений). Действия: `add_label`, `assign_reviewer`, `skip_review`, `notify_webhook`, `force_full_review`. Флаг `stop: true` прекращает проверку последующих правил. Управление — через вкладку **⚙️ Rules** в Web UI или API `GET/POST/DELETE /api/v1/rules`.

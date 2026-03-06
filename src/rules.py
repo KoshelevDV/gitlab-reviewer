@@ -85,7 +85,10 @@ def load_rules(path: str | None) -> RulesConfig:
         return RulesConfig()
 
     try:
-        raw = yaml.safe_load(p.read_text(encoding="utf-8"))
+        raw_text = p.read_text(encoding="utf-8")
+        if len(raw_text) > 512 * 1024:
+            raise ValueError("rules.yml exceeds maximum size of 512 KB")
+        raw = yaml.safe_load(raw_text)
     except yaml.YAMLError as exc:
         raise ValueError(f"rules.yml: invalid YAML — {exc}") from exc
 
@@ -212,7 +215,9 @@ def _match_condition(cond: RuleCondition, ctx: MRContext) -> bool:
     # if_files_match: any file matches any glob pattern
     if cond.if_files_match:
         if not ctx.changed_files:
-            # No file data available yet — treat as no match for this condition
+            logger.debug(
+                "Condition 'if_files_match' skipped — changed_files not available at webhook phase"
+            )
             return False
         matched = any(
             fnmatch.fnmatch(f, pattern)
@@ -230,7 +235,10 @@ def _match_condition(cond: RuleCondition, ctx: MRContext) -> bool:
     # if_lines_changed_gt: lines_changed > threshold
     if cond.if_lines_changed_gt is not None:
         if ctx.lines_changed == 0:
-            # No line data available — treat as no match
+            logger.debug(
+                "Condition 'if_lines_changed_gt' skipped — "
+                "lines_changed not available at webhook phase"
+            )
             return False
         if not (ctx.lines_changed > cond.if_lines_changed_gt):
             return False
