@@ -304,6 +304,52 @@ class TestGetDynamicContext:
         assert result == "" or "file0.py" in result  # either empty or only first attempt
 
 
+# ---------------------------------------------------------------------------
+# AC6: get_security_baseline filters docs/ by keywords
+# ---------------------------------------------------------------------------
+
+
+class TestGetSecurityBaseline:
+    @pytest.mark.asyncio
+    async def test_get_security_baseline_filters_by_keywords(self) -> None:
+        """Only files containing security keywords are included."""
+        from src.context_builder import get_security_baseline
+
+        tree = [
+            {"path": "docs/threat-model.md", "type": "blob"},
+            {"path": "docs/CVE-policy.md", "type": "blob"},
+            {"path": "docs/changelog.md", "type": "blob"},
+        ]
+        file_contents = {
+            "docs/threat-model.md": "# Threat Model\nThis describes threats.",
+            "docs/CVE-policy.md": "CVE-2024-1234 patched.",
+            "docs/changelog.md": "## v1.0\nBug fixes.",
+        }
+
+        client = MagicMock()
+        client.list_tree = AsyncMock(return_value=tree)
+        client.get_file_raw = AsyncMock(
+            side_effect=lambda pid, path, ref: file_contents.get(path, "")
+        )
+
+        result = await get_security_baseline(client, 1, "main")
+
+        assert "threat-model.md" in result
+        assert "CVE-policy.md" in result
+        assert "changelog.md" not in result
+
+    @pytest.mark.asyncio
+    async def test_get_security_baseline_empty_when_no_docs(self) -> None:
+        """Returns empty string when docs/ doesn't exist."""
+        from src.context_builder import get_security_baseline
+
+        client = MagicMock()
+        client.list_tree = AsyncMock(return_value=[])
+
+        result = await get_security_baseline(client, 1, "main")
+        assert result == ""
+
+
 class TestMRContext:
     def test_mr_context_defaults(self) -> None:
         """MRContext dataclass defaults are correct."""

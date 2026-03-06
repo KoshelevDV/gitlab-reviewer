@@ -284,7 +284,12 @@ class PipelineManager:
             return "dotnet"
         if "rust" in text:
             return "rust"
-        if "golang" in text or "go module" in text or '"go"' in text:
+        if (
+            "golang" in text
+            or "go module" in text
+            or '"go"' in text
+            or bool(re.search(r"\bgo\s+\d", text))  # matches "Go 1.22", "go 1.21"
+        ):
             return "go"
         return "python"
 

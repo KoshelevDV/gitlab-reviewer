@@ -111,6 +111,18 @@ class TestDetectStack:
         result = pm._detect_stack("")
         assert result == "python"
 
+    # AC9: Go detection
+    def test_detect_stack_go(self) -> None:
+        """Go stack detection from AGENTS.md."""
+        assert PipelineManager.detect_stack("## Stack\nGo 1.22, gin, pgx/v5") == "go"
+        assert PipelineManager.detect_stack("golang 1.21 project") == "go"
+        assert PipelineManager.detect_stack('depends on "go" module') == "go"
+
+    def test_detect_stack_go_not_triggered_by_common_words(self) -> None:
+        """'go' as common word must not trigger Go detection."""
+        result = PipelineManager.detect_stack("let's go ahead and run pytest")
+        assert result == "python"  # default, не go
+
 
 # ---------------------------------------------------------------------------
 # _count_blocking tests
@@ -363,3 +375,97 @@ class TestPipelineRun:
         # One result should have PIPELINE ERROR
         error_results = [r for r in results if "PIPELINE ERROR" in r.findings]
         assert len(error_results) == 1
+
+
+# ---------------------------------------------------------------------------
+# AC10: pipeline_v2 feature flag reads correctly from config
+# ---------------------------------------------------------------------------
+
+
+class TestPipelineV2Config:
+    def test_pipeline_v2_false_uses_old_pipeline(self) -> None:
+        """pipeline_v2=False must be readable from config."""
+        from src.config import AppConfig
+
+        cfg_data = {
+            "gitlab": {"url": "http://gl.example.com", "auth_type": "token"},
+            "providers": [{"id": "p1", "name": "test-provider", "type": "llamacpp", "url": "http://localhost:8080", "active": True}],
+            "model": {"provider_id": "p1", "name": "test-model"},
+            "review": {"pipeline_v2": False},
+        }
+        cfg = AppConfig.model_validate(cfg_data)
+        assert cfg.review.pipeline_v2 is False
+
+    def test_pipeline_v2_true_enables_new_pipeline(self) -> None:
+        """pipeline_v2=True must be readable from config."""
+        from src.config import AppConfig
+
+        cfg_data = {
+            "gitlab": {"url": "http://gl.example.com", "auth_type": "token"},
+            "providers": [{"id": "p1", "name": "test-provider", "type": "llamacpp", "url": "http://localhost:8080", "active": True}],
+            "model": {"provider_id": "p1", "name": "test-model"},
+            "review": {"pipeline_v2": True, "prompts_dir": "/tmp/prompts"},
+        }
+        cfg = AppConfig.model_validate(cfg_data)
+        assert cfg.review.pipeline_v2 is True
+        assert cfg.review.prompts_dir == "/tmp/prompts"
+
+
+# ---------------------------------------------------------------------------
+# AC8: PREVIOUS_REVIEWS contains real content from all 4 roles
+# ---------------------------------------------------------------------------
+
+
+class TestPipelineRunFinalReceivesAllRoles:
+    @pytest.mark.asyncio
+    async def test_run_final_receives_all_role_findings(self, tmp_path: Path) -> None:
+        """Final reviewer must receive actual content from all 4 parallel roles."""
+        from src.context_builder import MRContext
+
+        # Create minimal prompt files with role-specific markers
+        for role_dir in ["developer", "architect", "tester", "security", "reviewer"]:
+            (tmp_path / role_dir).mkdir()
+        (tmp_path / "developer" / "python.md").write_text(
+            "Developer review: [DIFF] previous: [PREVIOUS_REVIEWS]"
+        )
+        (tmp_path / "architect" / "python.md").write_text("Arch review: [DIFF]")
+        (tmp_path / "tester" / "manual.md").write_text("Test review: [DIFF]")
+        (tmp_path / "security" / "general.md").write_text("Sec review: [DIFF]")
+        (tmp_path / "reviewer" / "general.md").write_text("Final: [PREVIOUS_REVIEWS]")
+
+        call_args: list[str] = []
+
+        async def mock_chat(system_prompt: str, user_message: str = "", **kwargs) -> str:
+            call_args.append(system_prompt)
+            if "Arch review" in system_prompt:
+                return "ARCHITECT_MARKER: no issues"
+            if "Test review" in system_prompt:
+                return "TESTER_MARKER: all good"
+            if "Sec review" in system_prompt:
+                return "SECURITY_MARKER: clear"
+            if "Final:" in system_prompt:
+                return "## Decision: APPROVE\n\nAll good."
+            return "DEVELOPER_MARKER: ok"
+
+        llm = MagicMock()
+        llm.chat = mock_chat
+
+        pm = PipelineManager(llm_client=llm, prompts_dir=tmp_path, stack="python")
+        ctx = MRContext(
+            project_context="proj",
+            task_context="task",
+            dynamic_context="",
+            security_baseline="",
+            diff="some diff",
+            arch_decisions="",
+        )
+
+        results = await pm.run(ctx)
+
+        # Final call must contain results from all 4 parallel roles
+        final_prompt = next((a for a in call_args if "Final:" in a), None)
+        assert final_prompt is not None
+        assert "DEVELOPER_MARKER" in final_prompt
+        assert "ARCHITECT_MARKER" in final_prompt
+        assert "TESTER_MARKER" in final_prompt
+        assert "SECURITY_MARKER" in final_prompt
