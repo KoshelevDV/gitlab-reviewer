@@ -911,6 +911,12 @@ class Reviewer:
         summary_text = "\n\n".join(header_parts) + "\n\n---\n\n" + summary_text
 
         summary_comment = _format_summary_comment(summary_text, inline_count=len(inline_comments))
+        # Q-9: prepend clickable MR link header if mr_url is available
+        if record.mr_url:
+            mr_header = (
+                f"🔍 [MR #{record.mr_iid}: {record.mr_title}]({record.mr_url})\n\n"
+            )
+            summary_comment = mr_header + summary_comment
         await gitlab.post_mr_note(job.project_id, job.mr_iid, summary_comment)
         record.status = "posted"
         logger.info("Review posted: project=%s MR!%d", job.project_id, job.mr_iid)

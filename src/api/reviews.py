@@ -140,6 +140,27 @@ async def export_csv():  # type: ignore[no-untyped-def]
     )
 
 
+@router.get("/{review_id}/diff")
+async def get_review_diff(review_id: int) -> JSONResponse:
+    """Return diff metadata for a review: diff_hash, branches, prompt_names."""
+    if _db is None:
+        raise HTTPException(status_code=503, detail="Database not available")
+    rec = await _db.get_review(review_id)
+    if rec is None:
+        raise HTTPException(status_code=404, detail="Review not found")
+    return JSONResponse(
+        {
+            "review_id": rec.id,
+            "diff_hash": rec.diff_hash,
+            "mr_iid": rec.mr_iid,
+            "project_id": rec.project_id,
+            "source_branch": rec.source_branch,
+            "target_branch": rec.target_branch,
+            "prompt_names": rec.prompt_names,
+        }
+    )
+
+
 @router.get("/{review_id}")
 async def get_review(review_id: int) -> JSONResponse:
     if _db is None:

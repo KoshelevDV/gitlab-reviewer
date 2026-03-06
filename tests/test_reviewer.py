@@ -1004,3 +1004,42 @@ def test_make_llm_client_uses_config_timeout():
     assert kwargs.get("timeout") == 42, (
         f"Expected LLMClient(timeout=42), got timeout={kwargs.get('timeout')!r}"
     )
+
+
+class TestSummaryCommentMrUrl:
+    """Q-9: MR URL link prepended to summary comment when mr_url is set."""
+
+    async def test_summary_contains_mr_link_when_url_set(
+        self, reviewer, mock_gitlab, mock_llm, db, cfg_with_target, mock_mr
+    ):
+        """When mr_url is non-empty the summary comment starts with a clickable MR link."""
+        mock_mr.web_url = "http://gitlab.example.com/mr/7"
+        set_database(db)
+        with (
+            patch("src.reviewer._make_gitlab_client", return_value=mock_gitlab),
+            patch("src.reviewer._make_llm_client", return_value=mock_llm),
+            patch("src.reviewer.get_config", return_value=cfg_with_target),
+        ):
+            await reviewer.review_job(ReviewJob(project_id=42, mr_iid=7))
+
+        mock_gitlab.post_mr_note.assert_called_once()
+        comment = mock_gitlab.post_mr_note.call_args[0][2]
+        assert "[MR #7" in comment, f"Expected MR link in comment, got:\n{comment[:300]}"
+        assert "http://gitlab.example.com/mr/7" in comment
+
+    async def test_summary_no_mr_link_when_url_empty(
+        self, reviewer, mock_gitlab, mock_llm, db, cfg_with_target, mock_mr
+    ):
+        """When mr_url is empty the summary comment must NOT contain a MR markdown link."""
+        mock_mr.web_url = ""
+        set_database(db)
+        with (
+            patch("src.reviewer._make_gitlab_client", return_value=mock_gitlab),
+            patch("src.reviewer._make_llm_client", return_value=mock_llm),
+            patch("src.reviewer.get_config", return_value=cfg_with_target),
+        ):
+            await reviewer.review_job(ReviewJob(project_id=42, mr_iid=7))
+
+        mock_gitlab.post_mr_note.assert_called_once()
+        comment = mock_gitlab.post_mr_note.call_args[0][2]
+        assert "[MR #7" not in comment, f"Did not expect MR link when url is empty:\n{comment[:300]}"

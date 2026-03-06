@@ -193,3 +193,41 @@ class TestCSVExport:
         r = await app.get("/api/v1/reviews/export.csv")
         assert "99" in r.text
         assert "42" in r.text
+
+
+class TestGetReviewDiff:
+    async def test_diff_returns_expected_fields(self, app, db):
+        rec = await _seed(
+            db,
+            project_id="mygroup/myrepo",
+            mr_iid=7,
+            source_branch="feat/cool",
+            target_branch="main",
+            diff_hash="abc123def456",
+            prompt_names=["system", "lang_python"],
+        )
+        r = await app.get(f"/api/v1/reviews/{rec.id}/diff")
+        assert r.status_code == 200
+        data = r.json()
+        assert data["review_id"] == rec.id
+        assert data["diff_hash"] == "abc123def456"
+        assert data["mr_iid"] == 7
+        assert data["project_id"] == "mygroup/myrepo"
+        assert data["source_branch"] == "feat/cool"
+        assert data["target_branch"] == "main"
+        assert data["prompt_names"] == ["system", "lang_python"]
+
+    async def test_diff_404_for_nonexistent_review(self, app):
+        r = await app.get("/api/v1/reviews/99999/diff")
+        assert r.status_code == 404
+
+    async def test_diff_503_when_db_unavailable(self, app):
+        from src.api import reviews as reviews_mod
+
+        original_db = reviews_mod._db
+        try:
+            reviews_mod._db = None
+            r = await app.get("/api/v1/reviews/1/diff")
+            assert r.status_code == 503
+        finally:
+            reviews_mod._db = original_db
