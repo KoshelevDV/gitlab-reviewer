@@ -42,7 +42,8 @@ def _mask_secrets(data: Any) -> Any:
 async def get_config_endpoint() -> JSONResponse:
     """Return current config with secrets masked."""
     cfg = get_config()
-    raw = cfg.model_dump()
+    # mode="json" serializes SecretStr as "**********" (JSON-safe string)
+    raw = cfg.model_dump(mode="json")
     return JSONResponse(_mask_secrets(raw))
 
 
@@ -68,7 +69,8 @@ async def update_config(body: dict) -> JSONResponse:
     reload_config(CONFIG_PATH)
     if _prompt_engine is not None:
         _prompt_engine.invalidate_cache()
-    return JSONResponse(_mask_secrets(new_cfg.model_dump()))
+    # mode="json" serializes SecretStr as "**********" (JSON-safe string)
+    return JSONResponse(_mask_secrets(new_cfg.model_dump(mode="json")))
 
 
 @router.post("/reload")

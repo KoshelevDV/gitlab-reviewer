@@ -17,7 +17,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 import yaml
-from pydantic import BaseModel, Field, SecretStr, field_serializer, field_validator, model_validator
+from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
 
 CONFIG_PATH = Path(os.getenv("GLR_CONFIG_FILE", "config.yml"))
 
@@ -48,11 +48,6 @@ class Provider(BaseModel):
         if parsed.scheme not in ("http", "https"):
             raise ValueError(f"Provider URL must use http or https scheme, got: {parsed.scheme!r}")
         return v
-
-    @field_serializer("api_key")
-    def serialize_api_key(self, v: SecretStr) -> str:
-        return v.get_secret_value()
-
 
 class ModelConfig(BaseModel):
     provider_id: str = ""
@@ -289,6 +284,11 @@ def save_config(cfg: AppConfig, path: Path = CONFIG_PATH) -> None:
     tmp = path.with_name(".config.yml.tmp")
     # mode='json' converts Enum → str, datetime → str, etc.
     data: dict = cfg.model_dump(mode="json", exclude_none=False)
+    # Restore plaintext api_keys for YAML storage (mode="json" serializes
+    # SecretStr as "**********"; we need the real value to persist it).
+    for i, provider in enumerate(cfg.providers):
+        if i < len(data.get("providers", [])):
+            data["providers"][i]["api_key"] = provider.api_key.get_secret_value()
     # Never write secrets to yaml — strip all env-only credentials
     data.get("gitlab", {}).pop("webhook_secret", None)
     notif = data.get("notifications", {})
@@ -303,7 +303,6 @@ def save_config(cfg: AppConfig, path: Path = CONFIG_PATH) -> None:
     llm_key_from_env = os.getenv("GLR_LLM_API_KEY", "")
     if llm_key_from_env:
         for p in data.get("providers", []):
-            # api_key is serialized as plain str via field_serializer
             if p.get("api_key") == llm_key_from_env:
                 p["api_key"] = ""
 

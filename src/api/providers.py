@@ -12,8 +12,9 @@ from ..llm_client import ModelInfo, get_model_info, list_models
 router = APIRouter(prefix="/api/v1/providers", tags=["providers"])
 
 
-def _mask_provider(p) -> dict:
-    d = p.model_dump()
+def _mask_provider(p: "Provider") -> dict:
+    # mode="json" serializes SecretStr as "**********" (string), Enum → str, etc.
+    d = p.model_dump(mode="json")
     if d.get("api_key"):
         d["api_key"] = "****"
     return d
