@@ -15,6 +15,7 @@ import re
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
+from typing import Callable
 
 # Single-pass slot replacement — prevents injected content from expanding other slots
 _SLOTS_RE = re.compile(
@@ -96,16 +97,18 @@ class PipelineManager:
     def __init__(
         self,
         llm_client: LLMClient,
-        prompts_dir: Path,
+        prompts_dir: str | Path,
         stack: str = "python",
         role_models: RoleModelConfig | None = None,
         providers: list[Provider] | None = None,
+        llm_factory: Callable[[Provider, ModelConfig], LLMClient] | None = None,
     ) -> None:
         self._llm = llm_client
         self._prompts_dir = Path(prompts_dir)
         self._stack = stack.lower()
         self._role_models = role_models or RoleModelConfig()
         self._providers = providers or []
+        self._llm_factory = llm_factory or self._default_llm_factory
         # Cache of role → LLMClient to avoid creating duplicates
         self._role_llm_cache: dict[ReviewRole, LLMClient] = {}
 
@@ -209,6 +212,15 @@ class PipelineManager:
                 decision="NEEDS_DISCUSSION" if role == ReviewRole.REVIEWER else "",
             )
 
+    @staticmethod
+    def _default_llm_factory(provider: Provider, role_model: ModelConfig) -> LLMClient:
+        return LLMClient(
+            base_url=provider.url,
+            model=role_model.name,
+            timeout=role_model.timeout if role_model.timeout else 300,
+            api_key=provider.api_key.get_secret_value(),
+        )
+
     def _get_llm_for_role(self, role: ReviewRole) -> LLMClient:
         """
         Return the LLMClient for a given role.
@@ -220,7 +232,7 @@ class PipelineManager:
         if role in self._role_llm_cache:
             return self._role_llm_cache[role]
 
-        role_model: ModelConfig | None = getattr(self._role_models, role.value, None)
+        role_model: ModelConfig | None = self._role_models.roles.get(role.value)
 
         if role_model is None or not self._providers:
             # No override or no providers list — use global client
@@ -239,12 +251,7 @@ class PipelineManager:
             )
             return self._llm
 
-        client = LLMClient(
-            base_url=provider.url,
-            model=role_model.name,
-            timeout=300,
-            api_key=provider.api_key,
-        )
+        client = self._llm_factory(provider, role_model)
         self._role_llm_cache[role] = client
         logger.info(
             "Per-role LLM: role=%s provider=%s model=%s",

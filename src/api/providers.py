@@ -62,8 +62,8 @@ async def test_provider(provider_id: str) -> JSONResponse:
         raise HTTPException(status_code=404, detail=f"Provider '{provider_id}' not found")
 
     headers = {}
-    if provider.api_key:
-        headers["Authorization"] = f"Bearer {provider.api_key}"
+    if provider.api_key.get_secret_value():
+        headers["Authorization"] = f"Bearer {provider.api_key.get_secret_value()}"
 
     try:
         async with httpx.AsyncClient(headers=headers, timeout=8) as client:
@@ -90,7 +90,7 @@ async def get_models(provider_id: str) -> JSONResponse:
     if not provider:
         raise HTTPException(status_code=404, detail=f"Provider '{provider_id}' not found")
 
-    models: list[ModelInfo] = await list_models(provider.url, provider.type.value, provider.api_key)
+    models: list[ModelInfo] = await list_models(provider.url, provider.type.value, provider.api_key.get_secret_value())
     return JSONResponse([{"id": m.id, "context_length": m.context_length} for m in models])
 
 
@@ -102,7 +102,7 @@ async def get_model_info_endpoint(provider_id: str, model_name: str) -> JSONResp
     if not provider:
         raise HTTPException(status_code=404, detail=f"Provider '{provider_id}' not found")
 
-    info = await get_model_info(provider.url, model_name, provider.type.value, provider.api_key)
+    info = await get_model_info(provider.url, model_name, provider.type.value, provider.api_key.get_secret_value())
     return JSONResponse(
         {
             "id": info.id,

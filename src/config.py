@@ -14,9 +14,10 @@ import shutil
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 import yaml
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, SecretStr, field_serializer, field_validator, model_validator
 
 CONFIG_PATH = Path(os.getenv("GLR_CONFIG_FILE", "config.yml"))
 
@@ -37,8 +38,20 @@ class Provider(BaseModel):
     name: str
     type: ProviderType = ProviderType.ollama
     url: str = "http://localhost:11434"
-    api_key: str = ""
+    api_key: SecretStr = Field(default=SecretStr(""))
     active: bool = True
+
+    @field_validator("url")
+    @classmethod
+    def validate_url_scheme(cls, v: str) -> str:
+        parsed = urlparse(v)
+        if parsed.scheme not in ("http", "https"):
+            raise ValueError(f"Provider URL must use http or https scheme, got: {parsed.scheme!r}")
+        return v
+
+    @field_serializer("api_key")
+    def serialize_api_key(self, v: SecretStr) -> str:
+        return v.get_secret_value()
 
 
 class ModelConfig(BaseModel):
@@ -48,6 +61,7 @@ class ModelConfig(BaseModel):
     context_size: int | None = None  # None = model default
     max_tokens: int = 4096
     inline_comments: bool = True  # post findings as GitLab inline diff comments
+    timeout: int = 300
 
 
 class GitLabConfig(BaseModel):
@@ -136,13 +150,9 @@ class MemoryConfig(BaseModel):
 
 
 class RoleModelConfig(BaseModel):
-    """Per-role model override for pipeline_v2. Unset fields fall back to global model config."""
+    """Per-role model override. Keys must match ReviewRole.value strings."""
 
-    developer: ModelConfig | None = None
-    architect: ModelConfig | None = None
-    tester: ModelConfig | None = None
-    security: ModelConfig | None = None
-    reviewer: ModelConfig | None = None
+    roles: dict[str, ModelConfig] = Field(default_factory=dict)
 
 
 class ReviewConfig(BaseModel):
@@ -237,8 +247,8 @@ class AppConfig(BaseModel):
         llm_key = os.getenv("GLR_LLM_API_KEY", "")
         if llm_key:
             for p in self.providers:
-                if not p.api_key and (p.id == self.model.provider_id or not self.model.provider_id):
-                    p.api_key = llm_key
+                if not p.api_key.get_secret_value() and (p.id == self.model.provider_id or not self.model.provider_id):
+                    p.api_key = SecretStr(llm_key)
                     break
         return self
 
@@ -262,7 +272,8 @@ class AppConfig(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-def load_config(path: Path = CONFIG_PATH) -> AppConfig:
+def load_config(path: str | Path = CONFIG_PATH) -> AppConfig:
+    path = Path(path)
     if not path.exists():
         return AppConfig()
     with path.open(encoding="utf-8") as f:
@@ -292,6 +303,7 @@ def save_config(cfg: AppConfig, path: Path = CONFIG_PATH) -> None:
     llm_key_from_env = os.getenv("GLR_LLM_API_KEY", "")
     if llm_key_from_env:
         for p in data.get("providers", []):
+            # api_key is serialized as plain str via field_serializer
             if p.get("api_key") == llm_key_from_env:
                 p["api_key"] = ""
 

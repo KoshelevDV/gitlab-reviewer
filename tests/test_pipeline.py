@@ -501,15 +501,16 @@ class TestPerRoleModelConfig:
         ]
 
     def test_per_role_config_defaults_empty(self):
-        """AC5: RoleModelConfig() has all fields None by default."""
+        """AC5: RoleModelConfig() has empty roles dict by default."""
         from src.config import RoleModelConfig
 
         cfg = RoleModelConfig()
-        assert cfg.developer is None
-        assert cfg.architect is None
-        assert cfg.tester is None
-        assert cfg.security is None
-        assert cfg.reviewer is None
+        assert cfg.roles == {}
+        assert cfg.roles.get("developer") is None
+        assert cfg.roles.get("architect") is None
+        assert cfg.roles.get("tester") is None
+        assert cfg.roles.get("security") is None
+        assert cfg.roles.get("reviewer") is None
 
     def test_per_role_fallback_uses_global_model(self, prompts_dir: Path, mock_llm: MagicMock):
         """AC2: Role with no override → returns global LLMClient."""
@@ -530,11 +531,13 @@ class TestPerRoleModelConfig:
         from src.config import ModelConfig, RoleModelConfig
 
         role_models = RoleModelConfig(
-            architect=ModelConfig(
-                provider_id="architect-provider",
-                name="claude-sonnet",
-                temperature=0.1,
-            )
+            roles={
+                "architect": ModelConfig(
+                    provider_id="architect-provider",
+                    name="claude-sonnet",
+                    temperature=0.1,
+                )
+            }
         )
         providers = self._make_providers()
         pm = PipelineManager(
@@ -563,11 +566,13 @@ class TestPerRoleModelConfig:
         ]
 
         role_models = RoleModelConfig(
-            developer=ModelConfig(provider_id="p-developer", name="dev-model"),
-            architect=ModelConfig(provider_id="p-architect", name="arch-model"),
-            tester=ModelConfig(provider_id="p-tester", name="test-model"),
-            security=ModelConfig(provider_id="p-security", name="sec-model"),
-            reviewer=ModelConfig(provider_id="p-reviewer", name="rev-model"),
+            roles={
+                "developer": ModelConfig(provider_id="p-developer", name="dev-model"),
+                "architect": ModelConfig(provider_id="p-architect", name="arch-model"),
+                "tester": ModelConfig(provider_id="p-tester", name="test-model"),
+                "security": ModelConfig(provider_id="p-security", name="sec-model"),
+                "reviewer": ModelConfig(provider_id="p-reviewer", name="rev-model"),
+            }
         )
 
         pm = PipelineManager(
@@ -602,7 +607,7 @@ class TestPerRoleModelConfig:
         from src.config import ModelConfig, RoleModelConfig
 
         role_models = RoleModelConfig(
-            security=ModelConfig(provider_id="nonexistent-provider", name="some-model")
+            roles={"security": ModelConfig(provider_id="nonexistent-provider", name="some-model")}
         )
         pm = PipelineManager(
             llm_client=mock_llm,
@@ -619,7 +624,7 @@ class TestPerRoleModelConfig:
         from src.config import ModelConfig, RoleModelConfig
 
         role_models = RoleModelConfig(
-            developer=ModelConfig(provider_id="architect-provider", name="dev-model")
+            roles={"developer": ModelConfig(provider_id="architect-provider", name="dev-model")}
         )
         pm = PipelineManager(
             llm_client=mock_llm,
@@ -645,21 +650,23 @@ class TestPerRoleModelConfig:
             "review": {
                 "pipeline_v2": True,
                 "per_role_models": {
-                    "architect": {"provider_id": "openrouter", "name": "anthropic/claude-sonnet-4-5"},
-                    "security": {"provider_id": "openrouter", "name": "anthropic/claude-sonnet-4-5"},
-                    "developer": {"provider_id": "openrouter", "name": "qwen2.5-coder-7b"},
+                    "roles": {
+                        "architect": {"provider_id": "openrouter", "name": "anthropic/claude-sonnet-4-5"},
+                        "security": {"provider_id": "openrouter", "name": "anthropic/claude-sonnet-4-5"},
+                        "developer": {"provider_id": "openrouter", "name": "qwen2.5-coder-7b"},
+                    }
                 },
             },
         }
         cfg = AppConfig.model_validate(cfg_data)
-        assert cfg.review.per_role_models.architect is not None
-        assert cfg.review.per_role_models.architect.name == "anthropic/claude-sonnet-4-5"
-        assert cfg.review.per_role_models.security is not None
-        assert cfg.review.per_role_models.developer is not None
-        assert cfg.review.per_role_models.developer.name == "qwen2.5-coder-7b"
+        assert cfg.review.per_role_models.roles.get("architect") is not None
+        assert cfg.review.per_role_models.roles["architect"].name == "anthropic/claude-sonnet-4-5"
+        assert cfg.review.per_role_models.roles.get("security") is not None
+        assert cfg.review.per_role_models.roles.get("developer") is not None
+        assert cfg.review.per_role_models.roles["developer"].name == "qwen2.5-coder-7b"
         # Unset roles are None
-        assert cfg.review.per_role_models.tester is None
-        assert cfg.review.per_role_models.reviewer is None
+        assert cfg.review.per_role_models.roles.get("tester") is None
+        assert cfg.review.per_role_models.roles.get("reviewer") is None
 
     @pytest.mark.asyncio
     async def test_per_role_override_uses_role_model_in_run(self, prompts_dir: Path):
@@ -679,7 +686,7 @@ class TestPerRoleModelConfig:
             )
         ]
         role_models = RoleModelConfig(
-            architect=ModelConfig(provider_id="arch-p", name="arch-model")
+            roles={"architect": ModelConfig(provider_id="arch-p", name="arch-model")}
         )
 
         pm = PipelineManager(
@@ -706,3 +713,32 @@ class TestPerRoleModelConfig:
         assert arch_llm.chat.call_count == 1
         # global llm called for the rest (developer, tester, security, reviewer = 4)
         assert global_llm.chat.call_count == 4
+
+    @pytest.mark.asyncio
+    async def test_backward_compat_run_uses_global_llm_for_all_roles(self, prompts_dir: Path, mock_llm: MagicMock):
+        """AC4: Without per_role_models, all roles in run() use the same global LLMClient."""
+        from src.config import RoleModelConfig
+        from unittest.mock import AsyncMock
+
+        call_clients = []
+
+        async def recording_chat(system_prompt, **kwargs):
+            call_clients.append(id(mock_llm))
+            return "APPROVE"
+
+        mock_llm.chat = recording_chat
+
+        pm = PipelineManager(
+            llm_client=mock_llm,
+            prompts_dir=prompts_dir,
+            stack="python",
+            # NO per_role_models — backward compat
+        )
+
+        ctx = MRContext(project_context="", task_context="", dynamic_context="",
+                        security_baseline="", diff="diff", arch_decisions="")
+        await pm.run(ctx)
+
+        # All calls came from the same global llm instance
+        assert len(call_clients) >= 4  # at least 4 roles ran
+        assert all(c == id(mock_llm) for c in call_clients), "Some role used a different client"

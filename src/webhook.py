@@ -150,7 +150,7 @@ async def _run_slash_command(cmd, project_id, mr_iid, cfg) -> None:  # type: ign
             gitlab_url=cfg.gitlab.url,
             gitlab_token=cfg.gitlab_token or "",
             llm_base_url=provider.url if provider else "",
-            llm_api_key=provider.api_key if provider else "",
+            llm_api_key=provider.api_key.get_secret_value() if provider else "",
             llm_model=cfg.model.name,
             llm_temperature=cfg.model.temperature,
             tls_verify=cfg.gitlab.tls_verify,

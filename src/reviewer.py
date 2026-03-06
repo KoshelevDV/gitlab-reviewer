@@ -977,7 +977,7 @@ def _make_llm_client(cfg: AppConfig) -> LLMClient:
         base_url=provider.url,
         model=cfg.model.name,
         timeout=300,
-        api_key=provider.api_key,
+        api_key=provider.api_key.get_secret_value(),
     )
 
 
