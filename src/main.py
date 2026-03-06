@@ -37,6 +37,7 @@ from .api.queue_api import set_queue_manager
 from .api.reviews import router as reviews_router
 from .api.reviews import set_database as reviews_set_db
 from .api.reviews import set_queue_manager as reviews_set_queue
+from .api.rules_api import router as rules_router
 from .api.targets import router as targets_router
 from .backends import create_queue_manager
 from .config import CONFIG_PATH, reload_config
@@ -47,7 +48,7 @@ from .prompt_engine import PromptEngine
 from .reviewer import Reviewer, set_memory_store
 from .reviewer import set_database as reviewer_set_db
 from .ui.router import mount_ui
-from .webhook import make_webhook_router
+from .webhook import make_webhook_router, set_rules_path
 from .webhook import set_queue_manager as webhook_set_queue
 
 
@@ -133,6 +134,12 @@ def create_app() -> FastAPI:
     set_queue_manager(queue)
     webhook_set_queue(queue)
 
+    # Automation rules: rules.yml sits next to config.yml
+    import os as _os
+
+    _rules_yml = _os.path.join(_os.path.dirname(str(CONFIG_PATH.resolve())), "rules.yml")
+    set_rules_path(_rules_yml)
+
     # ----------------------------------------------------------------
     # Routes
     # ----------------------------------------------------------------
@@ -148,6 +155,7 @@ def create_app() -> FastAPI:
     app.include_router(logs_router)
     app.include_router(reviews_router)
     app.include_router(memory_router)
+    app.include_router(rules_router)
 
     if cfg.ui.enabled:
         mount_ui(app)

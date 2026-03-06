@@ -334,6 +334,39 @@ The bot replies as a new MR note within seconds.
 
 ---
 
+## Automation Rules
+
+Define YAML-based automation policies in `rules.yml` (next to `config.yml`). Rules are evaluated at MR enqueue time — before any diff is fetched — and act as a meta-layer on top of `review_targets`. Conditions support glob file patterns (`if_files_match`), author lists (`if_author_in`), target branch matching (`if_target_branch`), and diff size thresholds (`if_lines_changed_gt`). Actions include `add_label`, `assign_reviewer`, `skip_review`, `notify_webhook`, and `force_full_review`. The `stop: true` flag halts further rule evaluation. Manage rules via the **⚙️ Rules** tab in the Web UI or via `GET/POST/DELETE /api/v1/rules`.
+
+```yaml
+rules:
+  - name: Skip bot commits
+    condition:
+      if_author_in:
+        - dependabot
+        - renovate-bot
+    actions:
+      - type: skip_review
+    stop: true
+
+  - name: Security files — full review
+    condition:
+      if_files_match:
+        - "security/**"
+        - "*.env"
+        - ".env*"
+    actions:
+      - type: add_label
+        value: security-review
+      - type: force_full_review
+```
+
+---
+
+**Правила автоматизации (Automation Rules)** позволяют описывать политики в файле `rules.yml` рядом с `config.yml`. Правила вычисляются при постановке MR в очередь (до загрузки диффа) и работают поверх `review_targets`. Условия: `if_files_match` (glob-паттерны), `if_author_in` (список пользователей), `if_target_branch` (точное совпадение ветки), `if_lines_changed_gt` (порог изменений). Действия: `add_label`, `assign_reviewer`, `skip_review`, `notify_webhook`, `force_full_review`. Флаг `stop: true` прекращает проверку последующих правил. Управление — через вкладку **⚙️ Rules** в Web UI или API `GET/POST/DELETE /api/v1/rules`.
+
+---
+
 ## Streaming Reviews
 
 To watch a review generate in real time:

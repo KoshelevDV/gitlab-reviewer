@@ -236,19 +236,21 @@ Rust MR → промпт про ownership/lifetimes. Python → type hints, asyn
 
 ---
 
-**FT-6: Automation Rules (Reviewpad-style YAML)**
+**FT-6: Automation Rules (Reviewpad-style YAML)** ✅ Done
 
 **Описание:**  
 Пользователь описывает политики в `rules.yml`: условия (touched files, author, MR size)  
 и действия (add label, assign reviewer, skip review, notify).
 
 **Acceptance criteria:**
-- [ ] Новый файл `rules.yml` рядом с `config.yml`
-- [ ] Условия: `if_files_match: [security/**, *.env]`, `if_author_in: [...]`, `if_lines_changed > 500`
-- [ ] Действия: `add_label`, `assign_reviewer`, `skip_review`, `notify_webhook`, `force_full_review`
-- [ ] Правила оцениваются при enqueue, до фетча диффа
-- [ ] Правила применяются независимо от review_targets (это meta-слой)
-- [ ] UI: вкладка "Rules" с YAML-редактором и валидацией
+- [x] Новый файл `rules.yml` рядом с `config.yml`
+- [x] Условия: `if_files_match: [security/**, *.env]`, `if_author_in: [...]`, `if_lines_changed > 500`
+- [x] Действия: `add_label`, `assign_reviewer`, `skip_review`, `notify_webhook`, `force_full_review`
+- [x] Правила оцениваются при enqueue, до фетча диффа
+- [x] Правила применяются независимо от review_targets (это meta-слой)
+- [x] UI: вкладка "Rules" с YAML-редактором и валидацией
+
+**Реализовано:** `src/rules.py`, `src/api/rules_api.py`, интеграция в `src/webhook.py` + `src/main.py`, UI-вкладка "⚙️ Rules" в `index.html`, 28 тестов в `tests/test_rules.py`.
 
 **Priority:** Medium  
 **Effort:** XL
@@ -337,7 +339,7 @@ async def _with_retry(fn):
 | 🟡 P2 | Q-1: dry_run review trigger | S | DX | ✅ Done (`8969dd7`) |
 | 🟡 P2 | Q-6: Weekly stats API | S | Analytics | ✅ Done (`8969dd7`) |
 | 🟢 P3 | FT-5: Reviewer Feedback Learning | XL | Long-term | 🔲 Open |
-| 🟢 P3 | FT-6: Automation Rules (YAML) | XL | Power users | 🔲 Open |
+| 🟢 P3 | FT-6: Automation Rules (YAML) | XL | Power users | ✅ Done |
 | 🟢 P3 | #11: ruff lint fix (52 errors) | XS | Code quality | ✅ Done (`chore/ruff-lint-fix`) |
 | 🟢 P3 | #8: Q-9 test assertions (MR link at start) | XS | Test quality | ✅ Done |
 | 🟢 P3 | #10: `_safe_mr_title` type annotation `str\|None` | XS | Type safety | ✅ Done |

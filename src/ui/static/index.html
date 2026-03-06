@@ -1454,6 +1454,48 @@
     </div>
   </div>
 
+  <!-- ───────────────── RULES ───────────────── -->
+  <div x-show="activeTab === 'rules'" x-init="$watch('activeTab', v => v==='rules' && loadRules())">
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; flex-wrap:wrap; gap:8px;">
+      <div class="section-title" style="margin-bottom:0;">⚙️ Automation Rules</div>
+      <div style="display:flex; gap:8px; align-items:center;">
+        <span style="font-size:.82rem; color:var(--text-3);"
+          x-text="rulesCount > 0 ? 'Rules active: ' + rulesCount + ' rule' + (rulesCount === 1 ? '' : 's') : 'No rules configured'"></span>
+        <button class="btn btn-ghost btn-sm" @click="validateRules()">Validate</button>
+        <button class="btn btn-ghost btn-sm" style="color:var(--red);" @click="resetRules()">Reset</button>
+        <button class="btn btn-primary btn-sm" @click="saveRules()">Save Rules</button>
+      </div>
+    </div>
+
+    <div class="card" style="padding:16px;">
+      <div style="font-size:.78rem; color:var(--text-3); margin-bottom:8px;">
+        Edit <code>rules.yml</code> — define automation policies applied before review enqueue.
+        <a href="https://github.com/KoshelevDV/gitlab-reviewer#automation-rules" target="_blank"
+          style="color:var(--accent); text-decoration:none;">Docs ↗</a>
+      </div>
+      <textarea
+        x-model="rulesYaml"
+        class="inp"
+        style="width:100%; min-height:380px; font-family:monospace; font-size:.82rem; resize:vertical; box-sizing:border-box;"
+        placeholder="rules:
+  - name: Skip bot commits
+    condition:
+      if_author_in:
+        - dependabot
+        - renovate-bot
+    actions:
+      - type: skip_review
+    stop: true"></textarea>
+
+      <div x-show="rulesValidation !== null" style="margin-top:10px; font-size:.82rem; padding:8px 12px; border-radius:6px;"
+        :style="rulesValidation && rulesValidation.valid
+          ? 'background:var(--green-bg); color:var(--green); border:1px solid rgba(63,185,80,.3);'
+          : 'background:var(--red-bg); color:var(--red); border:1px solid rgba(248,81,73,.3);'"
+        x-text="rulesValidation ? (rulesValidation.valid ? '✅ Valid — ' + rulesValidation.count + ' rule(s)' : '❌ ' + rulesValidation.error) : ''">
+      </div>
+    </div>
+  </div>
+
   <!-- ───────────────── LOGS ───────────────── -->
   <div x-show="activeTab === 'logs'">
     <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; flex-wrap:wrap; gap:8px;">
@@ -1563,6 +1605,7 @@ function app() {
       { id: 'reviews',       label: '📋 Reviews' },
       { id: 'logs',          label: '📜 Logs' },
       { id: 'memory',        label: '🧠 Memory' },
+      { id: 'rules',         label: '⚙️ Rules' },
     ],
 
     config: {
@@ -1588,6 +1631,11 @@ function app() {
     modelSearch: {},
     modelInfo: {},
     modelSaved: false,
+
+    // Rules tab
+    rulesYaml: '',
+    rulesCount: 0,
+    rulesValidation: null,
 
     promptToAdd: '',
     promptSaved: false,
@@ -1994,6 +2042,60 @@ function app() {
     showToast(message, type = 'success') {
       this.toast = { show: true, message, type };
       setTimeout(() => this.toast.show = false, 3000);
+    },
+
+    // ── Rules tab ─────────────────────────────────────────────────
+    async loadRules() {
+      try {
+        const r = await fetch('/api/v1/rules');
+        if (!r.ok) return;
+        const data = await r.json();
+        this.rulesYaml = data.raw_yaml || '';
+        this.rulesCount = data.count || 0;
+        this.rulesValidation = null;
+      } catch (e) { this.showToast('Failed to load rules: ' + e, 'error'); }
+    },
+
+    async saveRules() {
+      try {
+        const r = await fetch('/api/v1/rules', {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain' },
+          body: this.rulesYaml,
+        });
+        if (r.ok) {
+          const data = await r.json();
+          this.rulesCount = data.count || 0;
+          this.rulesValidation = null;
+          this.showToast('Rules saved ✓ (' + (data.count || 0) + ' rule' + (data.count === 1 ? '' : 's') + ')');
+        } else {
+          const err = await r.json();
+          this.showToast('Error: ' + (err.detail || 'Save failed'), 'error');
+        }
+      } catch (e) { this.showToast('Network error: ' + e, 'error'); }
+    },
+
+    async validateRules() {
+      try {
+        const encoded = encodeURIComponent(this.rulesYaml);
+        const r = await fetch('/api/v1/rules/validate?yaml=' + encoded);
+        this.rulesValidation = await r.json();
+      } catch (e) { this.showToast('Validate error: ' + e, 'error'); }
+    },
+
+    async resetRules() {
+      if (!confirm('Delete rules.yml and reset to no rules?')) return;
+      try {
+        const r = await fetch('/api/v1/rules', { method: 'DELETE' });
+        if (r.ok) {
+          this.rulesYaml = '';
+          this.rulesCount = 0;
+          this.rulesValidation = null;
+          this.showToast('Rules reset ✓');
+        } else {
+          this.showToast('Reset failed', 'error');
+        }
+      } catch (e) { this.showToast('Network error: ' + e, 'error'); }
     },
   };
 }
