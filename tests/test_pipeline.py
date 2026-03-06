@@ -469,3 +469,240 @@ class TestPipelineRunFinalReceivesAllRoles:
         assert "ARCHITECT_MARKER" in final_prompt
         assert "TESTER_MARKER" in final_prompt
         assert "SECURITY_MARKER" in final_prompt
+
+
+# ---------------------------------------------------------------------------
+# Per-role model config tests (AC1–AC5)
+# ---------------------------------------------------------------------------
+
+
+class TestPerRoleModelConfig:
+    """Tests for per-role model config feature."""
+
+    def _make_providers(self):
+        from src.config import Provider, ProviderType
+        return [
+            Provider(
+                id="global-provider",
+                name="Global",
+                type=ProviderType.llamacpp,
+                url="http://global:8080",
+                api_key="",
+                active=True,
+            ),
+            Provider(
+                id="architect-provider",
+                name="Architect LLM",
+                type=ProviderType.openai_compat,
+                url="http://architect:8080",
+                api_key="arch-key",
+                active=True,
+            ),
+        ]
+
+    def test_per_role_config_defaults_empty(self):
+        """AC5: RoleModelConfig() has all fields None by default."""
+        from src.config import RoleModelConfig
+
+        cfg = RoleModelConfig()
+        assert cfg.developer is None
+        assert cfg.architect is None
+        assert cfg.tester is None
+        assert cfg.security is None
+        assert cfg.reviewer is None
+
+    def test_per_role_fallback_uses_global_model(self, prompts_dir: Path, mock_llm: MagicMock):
+        """AC2: Role with no override → returns global LLMClient."""
+        from src.config import RoleModelConfig
+
+        pm = PipelineManager(
+            llm_client=mock_llm,
+            prompts_dir=prompts_dir,
+            stack="python",
+            role_models=RoleModelConfig(),  # all None
+            providers=self._make_providers(),
+        )
+        client = pm._get_llm_for_role(ReviewRole.ARCHITECT)
+        assert client is mock_llm
+
+    def test_per_role_override_uses_role_model(self, prompts_dir: Path, mock_llm: MagicMock):
+        """AC1 + AC3: Override for architect → dedicated LLMClient, not global."""
+        from src.config import ModelConfig, RoleModelConfig
+
+        role_models = RoleModelConfig(
+            architect=ModelConfig(
+                provider_id="architect-provider",
+                name="claude-sonnet",
+                temperature=0.1,
+            )
+        )
+        providers = self._make_providers()
+        pm = PipelineManager(
+            llm_client=mock_llm,
+            prompts_dir=prompts_dir,
+            stack="python",
+            role_models=role_models,
+            providers=providers,
+        )
+
+        architect_client = pm._get_llm_for_role(ReviewRole.ARCHITECT)
+        # Must NOT be the global client
+        assert architect_client is not mock_llm
+        # Non-overridden roles still use global
+        developer_client = pm._get_llm_for_role(ReviewRole.DEVELOPER)
+        assert developer_client is mock_llm
+
+    def test_per_role_all_overridden(self, prompts_dir: Path, mock_llm: MagicMock):
+        """AC5: All 5 roles overridden → each gets its own client (or reuses by provider)."""
+        from src.config import ModelConfig, Provider, ProviderType, RoleModelConfig
+
+        providers = [
+            Provider(id=f"p-{role}", name=role, type=ProviderType.llamacpp,
+                     url=f"http://{role}:8080", api_key="", active=True)
+            for role in ("developer", "architect", "tester", "security", "reviewer")
+        ]
+
+        role_models = RoleModelConfig(
+            developer=ModelConfig(provider_id="p-developer", name="dev-model"),
+            architect=ModelConfig(provider_id="p-architect", name="arch-model"),
+            tester=ModelConfig(provider_id="p-tester", name="test-model"),
+            security=ModelConfig(provider_id="p-security", name="sec-model"),
+            reviewer=ModelConfig(provider_id="p-reviewer", name="rev-model"),
+        )
+
+        pm = PipelineManager(
+            llm_client=mock_llm,
+            prompts_dir=prompts_dir,
+            stack="python",
+            role_models=role_models,
+            providers=providers,
+        )
+
+        clients = {role: pm._get_llm_for_role(role) for role in ReviewRole}
+        # All must be distinct from global
+        for role, client in clients.items():
+            assert client is not mock_llm, f"Role {role} should have dedicated client"
+        # All clients must be different from each other (different providers)
+        client_list = list(clients.values())
+        assert len(set(id(c) for c in client_list)) == 5
+
+    def test_backward_compat_no_per_role(self, prompts_dir: Path, mock_llm: MagicMock):
+        """AC4: No per_role_models → PipelineManager uses global LLM for all roles."""
+        pm = PipelineManager(
+            llm_client=mock_llm,
+            prompts_dir=prompts_dir,
+            stack="python",
+            # role_models omitted — defaults to RoleModelConfig()
+        )
+        for role in ReviewRole:
+            assert pm._get_llm_for_role(role) is mock_llm
+
+    def test_per_role_unknown_provider_fallback(self, prompts_dir: Path, mock_llm: MagicMock):
+        """Unknown provider_id in override → falls back to global LLM + warning logged."""
+        from src.config import ModelConfig, RoleModelConfig
+
+        role_models = RoleModelConfig(
+            security=ModelConfig(provider_id="nonexistent-provider", name="some-model")
+        )
+        pm = PipelineManager(
+            llm_client=mock_llm,
+            prompts_dir=prompts_dir,
+            stack="python",
+            role_models=role_models,
+            providers=self._make_providers(),  # no "nonexistent-provider"
+        )
+        client = pm._get_llm_for_role(ReviewRole.SECURITY)
+        assert client is mock_llm
+
+    def test_per_role_client_cached(self, prompts_dir: Path, mock_llm: MagicMock):
+        """Same role called twice → same LLMClient instance (cached)."""
+        from src.config import ModelConfig, RoleModelConfig
+
+        role_models = RoleModelConfig(
+            developer=ModelConfig(provider_id="architect-provider", name="dev-model")
+        )
+        pm = PipelineManager(
+            llm_client=mock_llm,
+            prompts_dir=prompts_dir,
+            stack="python",
+            role_models=role_models,
+            providers=self._make_providers(),
+        )
+        c1 = pm._get_llm_for_role(ReviewRole.DEVELOPER)
+        c2 = pm._get_llm_for_role(ReviewRole.DEVELOPER)
+        assert c1 is c2
+
+    def test_per_role_config_in_review_config(self):
+        """AC1: ReviewConfig parses per_role_models from config dict."""
+        from src.config import AppConfig
+
+        cfg_data = {
+            "providers": [
+                {"id": "openrouter", "name": "OpenRouter", "type": "openai_compat",
+                 "url": "https://openrouter.ai/api", "active": True}
+            ],
+            "model": {"provider_id": "openrouter", "name": "default-model"},
+            "review": {
+                "pipeline_v2": True,
+                "per_role_models": {
+                    "architect": {"provider_id": "openrouter", "name": "anthropic/claude-sonnet-4-5"},
+                    "security": {"provider_id": "openrouter", "name": "anthropic/claude-sonnet-4-5"},
+                    "developer": {"provider_id": "openrouter", "name": "qwen2.5-coder-7b"},
+                },
+            },
+        }
+        cfg = AppConfig.model_validate(cfg_data)
+        assert cfg.review.per_role_models.architect is not None
+        assert cfg.review.per_role_models.architect.name == "anthropic/claude-sonnet-4-5"
+        assert cfg.review.per_role_models.security is not None
+        assert cfg.review.per_role_models.developer is not None
+        assert cfg.review.per_role_models.developer.name == "qwen2.5-coder-7b"
+        # Unset roles are None
+        assert cfg.review.per_role_models.tester is None
+        assert cfg.review.per_role_models.reviewer is None
+
+    @pytest.mark.asyncio
+    async def test_per_role_override_uses_role_model_in_run(self, prompts_dir: Path):
+        """AC3: _run_role picks up override client during actual pipeline run."""
+        from src.config import ModelConfig, Provider, ProviderType, RoleModelConfig
+
+        global_llm = MagicMock()
+        global_llm.chat = AsyncMock(return_value="Global LLM response. APPROVE")
+
+        arch_llm = MagicMock()
+        arch_llm.chat = AsyncMock(return_value="Architect LLM response. ## Decision: APPROVE")
+
+        providers = [
+            Provider(
+                id="arch-p", name="Arch Provider", type=ProviderType.llamacpp,
+                url="http://arch:8080", api_key="", active=True,
+            )
+        ]
+        role_models = RoleModelConfig(
+            architect=ModelConfig(provider_id="arch-p", name="arch-model")
+        )
+
+        pm = PipelineManager(
+            llm_client=global_llm,
+            prompts_dir=prompts_dir,
+            stack="python",
+            role_models=role_models,
+            providers=providers,
+        )
+        # Inject the arch_llm directly into the cache to verify it's used
+        pm._role_llm_cache[ReviewRole.ARCHITECT] = arch_llm
+
+        ctx = MRContext(
+            project_context="proj",
+            task_context="task",
+            dynamic_context="",
+            security_baseline="",
+            diff="diff",
+            arch_decisions="",
+        )
+        results = await pm.run(ctx)
+
+        # architect_llm must have been called
+        assert arch_llm.chat.call_count == 1
+        # global llm called for the rest (developer, tester, security, reviewer = 4)
+        assert global_llm.chat.call_count == 4

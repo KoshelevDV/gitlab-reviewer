@@ -135,12 +135,23 @@ class MemoryConfig(BaseModel):
     top_k: int = 5
 
 
+class RoleModelConfig(BaseModel):
+    """Per-role model override for pipeline_v2. Unset fields fall back to global model config."""
+
+    developer: ModelConfig | None = None
+    architect: ModelConfig | None = None
+    tester: ModelConfig | None = None
+    security: ModelConfig | None = None
+    reviewer: ModelConfig | None = None
+
+
 class ReviewConfig(BaseModel):
     """v2 pipeline settings."""
 
     pipeline_v2: bool = False  # enable v2 multi-role parallel pipeline
     prompts_dir: str = "/opt/projects/llm-review-prompts/prompts"  # path to role prompts
     context_token_budget: int = 3000  # token budget for docs/ and dynamic context
+    per_role_models: RoleModelConfig = Field(default_factory=RoleModelConfig)
 
 
 class PromptsConfig(BaseModel):

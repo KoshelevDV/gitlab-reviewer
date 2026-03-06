@@ -412,6 +412,8 @@ class Reviewer:
                 llm_client=llm,
                 prompts_dir=review_cfg.prompts_dir,  # type: ignore[arg-type]
                 stack=stack,
+                role_models=review_cfg.per_role_models,
+                providers=cfg.providers,
             )
             logger.info(
                 "v2 pipeline: detected stack=%s for project=%s MR!%d",
