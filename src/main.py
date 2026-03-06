@@ -97,7 +97,11 @@ def create_app() -> FastAPI:
         health_set_queue(queue)
         # Restore dedup cache from recent DB records (survives service restarts)
         await queue.load_seen_from_db(db)
-        queue.start(review_fn=reviewer.review_job)
+        if cfg.review.pipeline_v2:
+            logger.info("v2 pipeline enabled — using review_job_v2")
+            queue.start(review_fn=reviewer.review_job_v2)
+        else:
+            queue.start(review_fn=reviewer.review_job)
         logger.info("Startup complete — workers running")
         yield
         # Shutdown
