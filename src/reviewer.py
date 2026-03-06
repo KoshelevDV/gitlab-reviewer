@@ -23,6 +23,7 @@ import re
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol, runtime_checkable
+from urllib.parse import urlparse
 
 from . import metrics as _metrics
 from .config import AppConfig, ReviewTarget, get_config
@@ -35,6 +36,23 @@ from .notifier import notify as _dispatch_notify
 from .pipeline import PipelineManager, RoleResult, ReviewRole
 from .prompt_engine import PromptEngine
 from .queue_manager import ReviewJob
+
+
+def _safe_mr_url(url: str) -> str:
+    """Return url only if scheme is http/https, else empty string."""
+    try:
+        scheme = urlparse(url).scheme
+        if scheme not in ("http", "https"):
+            return ""
+    except Exception:
+        return ""
+    return url
+
+
+def _safe_mr_title(title: str) -> str:
+    """Escape markdown chars that could break the link text."""
+    title = title or ""
+    return title.replace("\\", "\\\\").replace("[", "\\[").replace("]", "\\]")
 
 
 @runtime_checkable
@@ -911,6 +929,13 @@ class Reviewer:
         summary_text = "\n\n".join(header_parts) + "\n\n---\n\n" + summary_text
 
         summary_comment = _format_summary_comment(summary_text, inline_count=len(inline_comments))
+        # Q-9: prepend clickable MR link header if mr_url is available
+        if record.mr_url:
+            safe_url = _safe_mr_url(record.mr_url)
+            safe_title = _safe_mr_title(record.mr_title)
+            if safe_url:
+                mr_header = f"🔍 [MR #{record.mr_iid}: {safe_title}]({safe_url})\n\n"
+                summary_comment = mr_header + summary_comment
         await gitlab.post_mr_note(job.project_id, job.mr_iid, summary_comment)
         record.status = "posted"
         logger.info("Review posted: project=%s MR!%d", job.project_id, job.mr_iid)
