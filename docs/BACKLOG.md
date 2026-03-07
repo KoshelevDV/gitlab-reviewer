@@ -345,3 +345,325 @@ async def _with_retry(fn):
 | 🟢 P3 | #10: `_safe_mr_title` type annotation `str\|None` | XS | Type safety | ✅ Done |
 
 **Открытые CODE_REVIEW items:** WARN-4, WARN-6, WARN-7, STYLE-1 (все Low/Medium)
+
+---
+
+## 🆕 New Feature Ideas (2026-03-07)
+
+---
+
+**FT-8: Auto-Unapprove on New Commit**
+
+Когда MR изменился после апрува — автоматически снять одобрение через GitLab API.
+Detect: новый push event на уже-approved MR.
+
+AC:
+- [ ] При push event — проверять есть ли approved review для этого MR
+- [ ] Если есть → GitLab API DELETE /approvals
+- [ ] Событие логируется + опциональное уведомление автору
+
+Priority: P1 | Effort: S | Impact: high
+
+---
+
+**FT-9: Smart Diff Compression для огромных MR**
+
+MR с diff > `max_diff_lines` усекается умно: приоритет security/, core/, изменённым файлам.
+Добавляет "N files omitted" предупреждение в review comment.
+
+AC:
+- [ ] `review_targets.max_diff_lines: int | null` в config (null = без лимита)
+- [ ] Алгоритм ранжирования файлов: security/ > tests/ > docs/ > other
+- [ ] Усечённые файлы → summary "File X: omitted (N lines), review manually"
+- [ ] Тест с diff > max_diff_lines
+
+Priority: P1 | Effort: M | Impact: high
+
+---
+
+**FT-12: Dependency Vulnerability Scanning (OSV.dev)**
+
+При изменении requirements.txt / go.mod / package.json / Cargo.toml в MR — проверять через OSV.dev API на known CVEs.
+
+AC:
+- [ ] Detect dependency files in diff by filename pattern
+- [ ] `GET https://api.osv.dev/v1/query` per new/changed dependency
+- [ ] Findings включаются в SECURITY role результаты
+- [ ] Fail-open: если OSV недоступен → warning, не блокировка
+- [ ] Configurable: `security.dependency_scan: true|false`
+
+Priority: P1 | Effort: M | Impact: high
+
+---
+
+**FT-13: Pattern Suppression / Noise Dictionary**
+
+Per-project `suppress.yml` с паттернами подавления: findings matching suppressed patterns убираются из output.
+
+AC:
+- [ ] Новый файл `suppress.yml` рядом с `config.yml`
+- [ ] Паттерны: `text_contains`, `file_matches`, `role`
+- [ ] Filtering после LLM-ответа, до публикации комментария
+- [ ] `/api/v1/suppress` CRUD endpoints
+- [ ] UI: вкладка Suppress с редактором
+- [ ] Пополнение через `/learn <quote>` slash command
+
+Priority: P1 | Effort: M | Impact: high
+
+---
+
+**BUG-8: dry_run как query param в POST /api/v1/queue/review**
+
+`dry_run` в теле запроса работает, в query param (`?dry_run=true`) — игнорируется.
+
+AC:
+- [ ] `dry_run: bool = Query(False)` в endpoint, с приоритетом над телом
+- [ ] Тест: GET-подобный вызов с ?dry_run=true
+
+Priority: P1 | Effort: XS | Impact: low
+
+---
+
+**BUG-9: SSE Buffer Race Condition**
+
+Клиент, подключившийся через 1-2с после старта генерации, пропускает начальные токены.
+
+AC:
+- [ ] TTL на `_stream_buffers`: не чистить сразу, а через 60с после завершения
+- [ ] Replay при подключении: клиент получает buffered chunks с начала
+- [ ] Тест: E2E-3 late-connect scenario
+
+Priority: P1 | Effort: S | Impact: medium
+
+---
+
+**FT-14: CHANGELOG Generation**
+
+`GET /api/v1/changelog?from=YYYY-MM-DD&to=YYYY-MM-DD` — LLM группирует закрытые MR по типу.
+
+AC:
+- [ ] Агрегация MR из ReviewRecord за период
+- [ ] LLM prompt: группировать по feat/fix/perf/security
+- [ ] Возвращать markdown, Content-Disposition: attachment для скачивания
+- [ ] Опциональный GitLab API fetch для MR description
+
+Priority: P2 | Effort: M | Impact: medium
+
+---
+
+**FT-16: GitHub PR Support**
+
+Добавить `github_client.py` с поддержкой GitHub Webhooks + GitHub Reviews API.
+
+AC:
+- [ ] Webhook path `/webhook/github`, secret validation (`X-Hub-Signature-256`)
+- [ ] `github_client.py`: get_pr_diff, post_pr_review_comment
+- [ ] Config: `providers.type: github`
+- [ ] README: GitHub setup section
+
+Priority: P2 | Effort: XL | Impact: high
+
+---
+
+**FT-17: MR Description Enhancement (/describe)**
+
+`/describe` slash command → LLM генерирует улучшенное описание MR и обновляет его через API.
+
+AC:
+- [ ] Slash command `/describe` в `slash_commands.py`
+- [ ] LLM prompt: "Generate a clear MR description based on diff"
+- [ ] PUT `/projects/:id/merge_requests/:iid` с обновлённым description
+- [ ] Оригинальное описание сохраняется в БД перед заменой
+
+Priority: P2 | Effort: S | Impact: medium
+
+---
+
+**FT-18: Review Cost Tracking**
+
+Для cloud LLM провайдеров — считать стоимость каждого ревью.
+
+AC:
+- [ ] `ReviewRecord.cost_usd: float | None` — новое поле + миграция
+- [ ] `config.yml`: `model.price_per_1k_input_tokens`, `price_per_1k_output_tokens`
+- [ ] Dashboard: стоимость за день/неделю, топ-5 дорогих проектов
+- [ ] `/api/v1/stats/cost` endpoint
+
+Priority: P2 | Effort: M | Impact: medium
+
+---
+
+**FT-19: Webhook Dead-Letter Queue (Retry)**
+
+Failed jobs → retry queue с exponential backoff. UI кнопка "Retry".
+
+AC:
+- [ ] `review_failed` table: job_id, error, retry_count, next_retry_at
+- [ ] Retry worker: exponential backoff (1m → 5m → 15m → give up)
+- [ ] UI: вкладка Failed с кнопкой Retry
+- [ ] `POST /api/v1/reviews/{id}/retry` endpoint
+
+Priority: P2 | Effort: M | Impact: medium
+
+---
+
+**FT-20: GitLab Severity Labels**
+
+Автоматически ставить label на MR по максимальной находке: `glr::critical`, `glr::high`, `glr::clean`.
+
+AC:
+- [ ] `review_targets.labels.enabled: true`
+- [ ] `review_targets.labels.prefix: "glr"` (configurable)
+- [ ] GitLab API: POST /labels (create if not exists), PUT /merge_requests (add label)
+- [ ] Тест с mock GitLab
+
+Priority: P2 | Effort: S | Impact: medium
+
+---
+
+## 🔧 New Refactoring Ideas (2026-03-07)
+
+---
+
+**RFT-1: Cross-Instance Dedup via Valkey SET NX EX**
+
+⚠️ Production bug: in-memory dedup не работает при replicas > 1 в k8s.
+
+AC:
+- [ ] Заменить `DedupCache._seen` на Valkey `SET NX EX` atomic operation
+- [ ] Ключ: `glr:dedup:{project_id}:{mr_iid}:{diff_hash}`, TTL = cooldown
+- [ ] Fallback к in-memory если Valkey недоступен
+- [ ] Тест: параллельный enqueue одного job → только один проходит
+
+Priority: P1 | Effort: M | Impact: high
+
+---
+
+**RFT-2: OpenTelemetry Distributed Tracing**
+
+Один trace = один review job: webhook → enqueue → fetch_diffs → LLM_call → post_comment.
+
+AC:
+- [ ] `opentelemetry-sdk` + `opentelemetry-instrumentation-fastapi` + `opentelemetry-instrumentation-httpx`
+- [ ] OTLP export: `OTEL_EXPORTER_OTLP_ENDPOINT` env var
+- [ ] Span attrs: `review_id`, `project_id`, `mr_iid`, `role`, `model`
+- [ ] docker-compose profile `otel` с Jaeger
+
+Priority: P2 | Effort: M | Impact: medium
+
+---
+
+**RFT-4: LLM Token Pre-Flight Check**
+
+Подсчёт токенов до отправки в LLM. Если diff > context_size × 0.85 → Smart Compression.
+
+AC:
+- [ ] tiktoken для OpenAI-compat, `/api/tokenize` для ollama
+- [ ] `config.yml`: `model.context_size: 32768` (уже есть, использовать)
+- [ ] При overflow: автоматический trigger FT-9 или truncate с warning
+- [ ] Метрика `review_token_count` в Prometheus
+
+Priority: P1 | Effort: M | Impact: high
+
+---
+
+**RFT-7: Graceful SIGTERM / k8s Shutdown**
+
+AC:
+- [ ] `signal.signal(SIGTERM, _shutdown_handler)` в `main.py`
+- [ ] При SIGTERM: stop accepting (503), drain in-flight jobs (timeout 120s), flush Prometheus
+- [ ] `SIGTERM_GRACE_PERIOD: int = 120` env var
+- [ ] k8s `terminationGracePeriodSeconds: 150` в helm values
+
+Priority: P2 | Effort: M | Impact: medium
+
+---
+
+**RFT-9: Pydantic v2 Audit — SecretStr model_dump**
+
+Аудит всех `model_dump()` без `mode="json"` — потенциальный leak SecretStr.
+
+AC:
+- [ ] grep всех `model_dump(` без `mode=`
+- [ ] Добавить mypy strict check на SecretStr handling
+- [ ] bandit scan в CI: `bandit -r src/ -ll`
+
+Priority: P1 | Effort: S | Impact: high
+
+---
+
+**RFT-10: API Rate Limiting на Webhook**
+
+AC:
+- [ ] `slowapi` + `limiter = Limiter(key_func=get_remote_address)`
+- [ ] `@limiter.limit("100/minute")` на `/webhook/gitlab`
+- [ ] 429 ответ с `Retry-After` header
+- [ ] Тест: 101 запрос → последний возвращает 429
+
+Priority: P2 | Effort: S | Impact: medium
+
+---
+
+## 🧪 New E2E Test Ideas (2026-03-07)
+
+---
+
+**E2E-1: Full Webhook → Review → GitLab Comment**
+
+Главный happy path сквозного теста.
+
+AC:
+- [ ] `httpx.AsyncClient(transport=ASGITransport(app=app))`
+- [ ] `respx` mock для GitLab API (get_mr, get_diffs, post_mr_note)
+- [ ] Mock LLM → детерминированный ответ
+- [ ] Assert: `post_mr_note` вызван с comment содержащим Risk Score
+
+Priority: P1 | Effort: M | Impact: high
+
+---
+
+**E2E-2: Slash Commands Full Cycle**
+
+Note Hook webhook → parse → LLM → reply comment.
+
+AC:
+- [ ] Note Hook payload с `/summary`
+- [ ] Mock GitLab `get_diffs` + `post_mr_note`
+- [ ] Assert: reply-comment запостен в GitLab
+
+Priority: P1 | Effort: M | Impact: high
+
+---
+
+**E2E-3: SSE Streaming Integration**
+
+AC:
+- [ ] POST /api/v1/queue/review → stream_url
+- [ ] Подключиться к SSE endpoint, собрать chunks
+- [ ] Assert: chunks → финальный text == DB ReviewRecord.review_text
+- [ ] Late-connect scenario: подключиться через 0.5s → не пропустить токены (BUG-9)
+
+Priority: P2 | Effort: M | Impact: medium
+
+---
+
+**E2E-4: Queue Backend Contract Tests (Testcontainers)**
+
+AC:
+- [ ] `testcontainers-python` для Valkey (redis-compatible)
+- [ ] Параметризованный pytest fixture: `[MemoryBackend, ValkeyBackend]`
+- [ ] Один набор тестов: enqueue + dequeue + dedup + stats
+
+Priority: P2 | Effort: M | Impact: medium
+
+---
+
+**E2E-5: Rules Engine Post-Diff Integration**
+
+После реализации RFT-R07 (post-diff rules evaluation):
+
+AC:
+- [ ] Webhook → diff fetch (mock files) → rules(if_files_match security/**) → skip
+- [ ] Assert: если match → enqueue не вызван; если no match → вызван
+
+Priority: P1 | Effort: S | Impact: high (после RFT-R07)
