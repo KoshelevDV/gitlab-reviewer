@@ -415,3 +415,193 @@ class TestWebhookWithRules:
             data = resp.json()
             assert data["status"] == "accepted"
             mock_queue.enqueue.assert_awaited_once()
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# TestRulesApiBodyLimit
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+class TestRulesApiBodyLimit:
+    """Tests for body size limits and validate endpoints."""
+
+    def _make_app(self, rules_path: str):
+        """Build a minimal FastAPI app with rules_router wired."""
+        from fastapi import FastAPI
+
+        from src.api.rules_api import router as rules_router
+
+        app = FastAPI()
+        app.include_router(rules_router)
+        return app
+
+    def test_load_rules_exceeds_512kb_raises(self, tmp_path):
+        """load_rules raises ValueError for files > 512 KB."""
+        rules_file = tmp_path / "rules.yml"
+        rules_file.write_text("x: " + "a" * (512 * 1024 + 1), encoding="utf-8")
+        with pytest.raises(ValueError, match="maximum size"):
+            load_rules(str(rules_file))
+
+    @pytest.mark.asyncio
+    async def test_save_rules_body_too_large_returns_413(self, tmp_path):
+        """POST /api/v1/rules with body > 512 KB returns 413."""
+        from httpx import ASGITransport, AsyncClient
+
+        rules_yml = tmp_path / "rules.yml"
+
+        with patch("src.webhook._rules_path", str(rules_yml)):
+            app = self._make_app(str(rules_yml))
+            async with AsyncClient(
+                transport=ASGITransport(app=app), base_url="http://test"
+            ) as client:
+                big_body = b"x: " + b"a" * (512 * 1024 + 1)
+                resp = await client.post(
+                    "/api/v1/rules",
+                    content=big_body,
+                    headers={"content-type": "text/plain"},
+                )
+        assert resp.status_code == 413
+
+    @pytest.mark.asyncio
+    async def test_validate_rules_post_valid(self, tmp_path):
+        """POST /api/v1/rules/validate with valid YAML returns {valid: true}."""
+        from httpx import ASGITransport, AsyncClient
+
+        rules_yml = tmp_path / "rules.yml"
+
+        with patch("src.webhook._rules_path", str(rules_yml)):
+            app = self._make_app(str(rules_yml))
+            async with AsyncClient(
+                transport=ASGITransport(app=app), base_url="http://test"
+            ) as client:
+                valid_yaml = textwrap.dedent("""
+                    rules:
+                      - name: Skip bots
+                        condition:
+                          if_author_in:
+                            - dependabot
+                        actions:
+                          - type: skip_review
+                        stop: true
+                """)
+                resp = await client.post(
+                    "/api/v1/rules/validate",
+                    content=valid_yaml.encode(),
+                    headers={"content-type": "text/plain"},
+                )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["valid"] is True
+        assert data["error"] is None
+        assert data["count"] == 1
+
+    @pytest.mark.asyncio
+    async def test_validate_rules_post_invalid(self, tmp_path):
+        """POST /api/v1/rules/validate with invalid YAML returns {valid: false}."""
+        from httpx import ASGITransport, AsyncClient
+
+        rules_yml = tmp_path / "rules.yml"
+
+        with patch("src.webhook._rules_path", str(rules_yml)):
+            app = self._make_app(str(rules_yml))
+            async with AsyncClient(
+                transport=ASGITransport(app=app), base_url="http://test"
+            ) as client:
+                resp = await client.post(
+                    "/api/v1/rules/validate",
+                    content=b"rules: [not: valid: yaml: (",
+                    headers={"content-type": "text/plain"},
+                )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["valid"] is False
+        assert data["error"] is not None
+
+    @pytest.mark.asyncio
+    async def test_validate_rules_get_valid(self, tmp_path):
+        """GET /api/v1/rules/validate?yaml=... with valid YAML returns {valid: true}."""
+        from urllib.parse import quote
+
+        from httpx import ASGITransport, AsyncClient
+
+        rules_yml = tmp_path / "rules.yml"
+
+        with patch("src.webhook._rules_path", str(rules_yml)):
+            app = self._make_app(str(rules_yml))
+            async with AsyncClient(
+                transport=ASGITransport(app=app), base_url="http://test"
+            ) as client:
+                valid_yaml = textwrap.dedent("""
+                    rules:
+                      - name: Skip bots
+                        condition:
+                          if_author_in:
+                            - dependabot
+                        actions:
+                          - type: skip_review
+                """)
+                resp = await client.get(
+                    f"/api/v1/rules/validate?yaml={quote(valid_yaml)}",
+                )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["valid"] is True
+
+    @pytest.mark.asyncio
+    async def test_webhook_unimplemented_action_logs_warning(self, tmp_path, caplog):
+        """Non-skip_review actions log a warning but do not block enqueue."""
+        import logging
+
+        from fastapi import FastAPI
+        from httpx import ASGITransport, AsyncClient
+
+        rules_yml = tmp_path / "rules.yml"
+        rules_yml.write_text(
+            textwrap.dedent("""
+                rules:
+                  - name: Add label
+                    condition:
+                      if_author_in:
+                        - alice
+                    actions:
+                      - type: add_label
+                        value: needs-review
+            """),
+            encoding="utf-8",
+        )
+
+        mock_cfg = __import__("unittest.mock", fromlist=["MagicMock"]).MagicMock()
+        mock_cfg.gitlab.webhook_secret = ""
+
+        with (
+            patch("src.webhook._rules_path", str(rules_yml)),
+            patch("src.webhook._queue") as mock_queue,
+            patch("src.webhook.get_config", return_value=mock_cfg),
+            caplog.at_level(logging.WARNING, logger="src.webhook"),
+        ):
+            mock_queue.enqueue = AsyncMock(return_value=True)
+
+            from src.webhook import make_webhook_router
+
+            app = FastAPI()
+            app.include_router(make_webhook_router())
+
+            payload = {
+                "object_attributes": {"action": "open", "iid": 7, "target_branch": "main"},
+                "project": {"id": 42},
+                "user": {"username": "alice"},
+            }
+
+            async with AsyncClient(
+                transport=ASGITransport(app=app), base_url="http://test"
+            ) as client:
+                resp = await client.post(
+                    "/webhook/gitlab",
+                    json=payload,
+                    headers={"X-Gitlab-Event": "Merge Request Hook"},
+                )
+
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "accepted"
+        assert any("not yet implemented" in r.message for r in caplog.records)
+        mock_queue.enqueue.assert_awaited_once()

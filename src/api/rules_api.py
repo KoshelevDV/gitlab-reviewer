@@ -80,6 +80,12 @@ async def save_rules(request: Request) -> JSONResponse:
     """Accept YAML body, validate, and save as rules.yml."""
     p = _require_path()
 
+    content_length = request.headers.get("content-length")
+    if content_length and int(content_length) > MAX_RULES_BODY:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Request body too large (max {MAX_RULES_BODY // 1024} KB)",
+        )
     body_bytes = await request.body()
     if len(body_bytes) > MAX_RULES_BODY:
         raise HTTPException(
@@ -131,9 +137,18 @@ async def validate_rules(yaml_param: str = Query(default="", alias="yaml")) -> J
 @router.post("/validate")
 async def validate_rules_post(request: Request) -> JSONResponse:
     """Validate YAML rules body (POST version for large configs)."""
+    content_length = request.headers.get("content-length")
+    if content_length and int(content_length) > MAX_RULES_BODY:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Request body too large (max {MAX_RULES_BODY // 1024} KB)",
+        )
     body_bytes = await request.body()
     if len(body_bytes) > MAX_RULES_BODY:
-        return JSONResponse({"valid": False, "error": "Request body too large", "count": 0})
+        raise HTTPException(
+            status_code=413,
+            detail=f"Request body too large (max {MAX_RULES_BODY // 1024} KB)",
+        )
     yaml_text = body_bytes.decode("utf-8")
     if not yaml_text.strip():
         return JSONResponse({"valid": True, "error": None, "count": 0})
