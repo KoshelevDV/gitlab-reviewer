@@ -979,6 +979,7 @@ class TestMemoryV2:
 
 # ── _make_llm_client timeout test ─────────────────────────────────────────────
 
+
 def test_make_llm_client_uses_config_timeout():
     """_make_llm_client must pass ModelConfig.timeout to LLMClient constructor."""
     from unittest.mock import MagicMock, patch

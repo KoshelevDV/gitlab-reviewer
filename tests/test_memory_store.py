@@ -130,9 +130,7 @@ async def test_remember_noop_when_unavailable():
 
     with patch("src.memory_store._try_import_qdrant") as mock_import_qdrant:
         mock_client = AsyncMock()
-        mock_client.get_collections = AsyncMock(
-            side_effect=OSError("Connection refused")
-        )
+        mock_client.get_collections = AsyncMock(side_effect=OSError("Connection refused"))
         FakeAsyncQdrantClient = MagicMock(return_value=mock_client)
         mock_import_qdrant.return_value = (FakeAsyncQdrantClient, MagicMock())
 
@@ -303,6 +301,7 @@ def test_memory_config_defaults():
 def test_memory_config_in_app_config():
     """AppConfig includes memory section with correct defaults."""
     from src.config import AppConfig
+
     cfg = AppConfig()
     assert hasattr(cfg, "memory")
     assert isinstance(cfg.memory, MemoryConfig)

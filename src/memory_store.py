@@ -33,7 +33,7 @@ _EMBEDDING_MODEL = "all-MiniLM-L6-v2"
 
 
 class MemoryCategory(StrEnum):
-    ERROR_PATTERN = "error_pattern"    # recurring error found in the project
+    ERROR_PATTERN = "error_pattern"  # recurring error found in the project
     REVIEW_HISTORY = "review_history"  # past review of a file/function
 
 
@@ -41,7 +41,7 @@ class MemoryCategory(StrEnum):
 class MemoryRecord:
     project_id: str
     category: MemoryCategory
-    content: str           # text to store/search
+    content: str  # text to store/search
     metadata: dict = field(default_factory=dict)  # file_path, severity, mr_iid, etc.
 
 
@@ -54,6 +54,7 @@ def _try_import_qdrant():  # type: ignore[return]
     try:
         from qdrant_client import AsyncQdrantClient  # type: ignore[import-not-found]
         from qdrant_client.http import models as qm  # type: ignore[import-not-found]
+
         return AsyncQdrantClient, qm
     except ImportError:
         return None, None
@@ -62,6 +63,7 @@ def _try_import_qdrant():  # type: ignore[return]
 def _try_import_sentence_transformers():  # type: ignore[return]
     try:
         from sentence_transformers import SentenceTransformer  # type: ignore[import-not-found]
+
         return SentenceTransformer
     except ImportError:
         return None
@@ -90,8 +92,8 @@ class MemoryStore:
     ) -> None:
         self._url = url
         self._collection = collection
-        self._client: Any = None          # AsyncQdrantClient | None
-        self._encoder: Any = None         # SentenceTransformer | None
+        self._client: Any = None  # AsyncQdrantClient | None
+        self._encoder: Any = None  # SentenceTransformer | None
         self._available: bool | None = None  # None = not yet checked
         self._collection_ready: bool = False
 

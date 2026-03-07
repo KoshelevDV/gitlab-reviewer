@@ -30,9 +30,9 @@ class ActionType(StrEnum):
 @dataclass
 class RuleCondition:
     if_files_match: list[str] = field(default_factory=list)  # glob patterns
-    if_author_in: list[str] = field(default_factory=list)    # GitLab usernames
-    if_lines_changed_gt: int | None = None                   # total diff lines
-    if_target_branch: str | None = None                      # exact match
+    if_author_in: list[str] = field(default_factory=list)  # GitLab usernames
+    if_lines_changed_gt: int | None = None  # total diff lines
+    if_target_branch: str | None = None  # exact match
 
 
 @dataclass
@@ -137,15 +137,11 @@ def _parse_condition(raw: Any, rule_idx: int) -> RuleCondition:
 
     if_lines_changed_gt = raw.get("if_lines_changed_gt")
     if if_lines_changed_gt is not None and not isinstance(if_lines_changed_gt, int):
-        raise ValueError(
-            f"rules.yml: rule #{rule_idx} 'if_lines_changed_gt' must be an integer"
-        )
+        raise ValueError(f"rules.yml: rule #{rule_idx} 'if_lines_changed_gt' must be an integer")
 
     if_target_branch = raw.get("if_target_branch")
     if if_target_branch is not None and not isinstance(if_target_branch, str):
-        raise ValueError(
-            f"rules.yml: rule #{rule_idx} 'if_target_branch' must be a string"
-        )
+        raise ValueError(f"rules.yml: rule #{rule_idx} 'if_target_branch' must be a string")
 
     return RuleCondition(
         if_files_match=[str(p) for p in if_files_match],
@@ -162,14 +158,10 @@ def _parse_actions(raw: Any, rule_idx: int) -> list[RuleAction]:
     actions: list[RuleAction] = []
     for j, a in enumerate(raw):
         if not isinstance(a, dict):
-            raise ValueError(
-                f"rules.yml: rule #{rule_idx} action #{j} must be a mapping"
-            )
+            raise ValueError(f"rules.yml: rule #{rule_idx} action #{j} must be a mapping")
         raw_type = a.get("type")
         if not raw_type:
-            raise ValueError(
-                f"rules.yml: rule #{rule_idx} action #{j} missing 'type'"
-            )
+            raise ValueError(f"rules.yml: rule #{rule_idx} action #{j} missing 'type'")
         try:
             action_type = ActionType(raw_type)
         except ValueError:

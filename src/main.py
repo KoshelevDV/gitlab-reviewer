@@ -96,9 +96,7 @@ def create_app() -> FastAPI:
         await db.init()
         reviewer_set_db(db)
         # MemoryStore singleton — model loaded once, shared across all reviews
-        memory_store = MemoryStore(
-            url=cfg.memory.qdrant_url, collection=cfg.memory.collection
-        )
+        memory_store = MemoryStore(url=cfg.memory.qdrant_url, collection=cfg.memory.collection)
         set_memory_store(memory_store)
         memory_api_set_store(memory_store)
         reviews_set_db(db)

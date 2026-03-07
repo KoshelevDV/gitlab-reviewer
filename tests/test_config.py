@@ -14,9 +14,16 @@ def test_per_role_models_yaml_parsing():
     from src.config import load_config
 
     cfg_data = {
-        "providers": [{"id": "openrouter", "name": "OR", "type": "openai_compat",
-                       "url": "https://openrouter.ai/api", "active": True,
-                       "api_key": "test-key"}],
+        "providers": [
+            {
+                "id": "openrouter",
+                "name": "OR",
+                "type": "openai_compat",
+                "url": "https://openrouter.ai/api",
+                "active": True,
+                "api_key": "test-key",
+            }
+        ],
         "model": {"provider_id": "openrouter", "name": "default-model"},
         "review": {
             "pipeline_v2": True,
@@ -25,8 +32,8 @@ def test_per_role_models_yaml_parsing():
                     "architect": {"provider_id": "openrouter", "name": "claude-sonnet"},
                     "developer": {"provider_id": "openrouter", "name": "qwen2.5-coder"},
                 }
-            }
-        }
+            },
+        },
     }
     with tempfile.NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
         yaml.dump(cfg_data, f)
