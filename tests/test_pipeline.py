@@ -30,13 +30,10 @@ def prompts_dir(tmp_path: Path) -> Path:
             "[PROJECT_CONTEXT]\n[TASK_CONTEXT]\n[DIFF]\n[DYNAMIC_CONTEXT]\n"
         )
         (tmp_path / "architect" / f"{stack}.md").write_text(
-            f"# Architect Review ({stack})\n\n"
-            "[PROJECT_CONTEXT]\n[ARCH_DECISIONS]\n[DIFF]\n"
+            f"# Architect Review ({stack})\n\n[PROJECT_CONTEXT]\n[ARCH_DECISIONS]\n[DIFF]\n"
         )
 
-    (tmp_path / "tester" / "manual.md").write_text(
-        "# Tester Review\n\n[TASK_CONTEXT]\n[DIFF]\n"
-    )
+    (tmp_path / "tester" / "manual.md").write_text("# Tester Review\n\n[TASK_CONTEXT]\n[DIFF]\n")
     (tmp_path / "security" / "general.md").write_text(
         "# Security Review\n\n[SECURITY_BASELINE]\n[DIFF]\n"
     )
@@ -257,9 +254,7 @@ class TestPipelineRun:
         """
         call_log: list[dict] = []
 
-        async def mock_chat(
-            system_prompt: str, user_message: str, temperature: float = 0.1
-        ) -> str:
+        async def mock_chat(system_prompt: str, user_message: str, temperature: float = 0.1) -> str:
             call_log.append({"system": system_prompt[:100], "temp": temperature})
             # Final reviewer response includes APPROVE
             if "Final Review" in system_prompt or "PREVIOUS_REVIEWS" in system_prompt:
@@ -297,9 +292,7 @@ class TestPipelineRun:
     ) -> None:
         """blocking_count should reflect BLOCKING/CRITICAL/HIGH in findings."""
 
-        async def mock_chat(
-            system_prompt: str, user_message: str, temperature: float = 0.1
-        ) -> str:
+        async def mock_chat(system_prompt: str, user_message: str, temperature: float = 0.1) -> str:
             if "Security" in system_prompt:
                 return "[BLOCKING] SQL injection\n[CRITICAL] Auth bypass\n[HIGH] Exposure"
             if "Decision" in system_prompt or "Final" in system_prompt:
@@ -323,9 +316,7 @@ class TestPipelineRun:
         """REVIEWER call should have previous reviews injected into prompt."""
         captured_prompts: list[str] = []
 
-        async def mock_chat(
-            system_prompt: str, user_message: str, temperature: float = 0.1
-        ) -> str:
+        async def mock_chat(system_prompt: str, user_message: str, temperature: float = 0.1) -> str:
             captured_prompts.append(system_prompt)
             if "Final" in system_prompt:
                 return "## Decision: APPROVE\n\n**Reason:** Good"
@@ -352,9 +343,7 @@ class TestPipelineRun:
         """LLM errors should not crash the pipeline; failed roles get error results."""
         call_count = 0
 
-        async def mock_chat(
-            system_prompt: str, user_message: str, temperature: float = 0.1
-        ) -> str:
+        async def mock_chat(system_prompt: str, user_message: str, temperature: float = 0.1) -> str:
             nonlocal call_count
             call_count += 1
             if call_count == 2:
@@ -386,8 +375,13 @@ class TestPipelineV2Config:
         """pipeline_v2=False must be readable from config."""
         from src.config import AppConfig
 
-        _p1 = {"id": "p1", "name": "test-provider", "type": "llamacpp",
-               "url": "http://localhost:8080", "active": True}
+        _p1 = {
+            "id": "p1",
+            "name": "test-provider",
+            "type": "llamacpp",
+            "url": "http://localhost:8080",
+            "active": True,
+        }
         cfg_data = {
             "gitlab": {"url": "http://gl.example.com", "auth_type": "token"},
             "providers": [_p1],
@@ -405,8 +399,13 @@ class TestPipelineV2Config:
 
         prompts_dir = str(tmp_path / "prompts")
         os.makedirs(prompts_dir, exist_ok=True)
-        _p1 = {"id": "p1", "name": "test-provider", "type": "llamacpp",
-               "url": "http://localhost:8080", "active": True}
+        _p1 = {
+            "id": "p1",
+            "name": "test-provider",
+            "type": "llamacpp",
+            "url": "http://localhost:8080",
+            "active": True,
+        }
         cfg_data = {
             "gitlab": {"url": "http://gl.example.com", "auth_type": "token"},
             "providers": [_p1],
@@ -488,6 +487,7 @@ class TestPerRoleModelConfig:
 
     def _make_providers(self):
         from src.config import Provider, ProviderType
+
         return [
             Provider(
                 id="global-provider",
@@ -567,8 +567,14 @@ class TestPerRoleModelConfig:
         from src.config import ModelConfig, Provider, ProviderType, RoleModelConfig
 
         providers = [
-            Provider(id=f"p-{role}", name=role, type=ProviderType.llamacpp,
-                     url=f"http://{role}:8080", api_key="", active=True)
+            Provider(
+                id=f"p-{role}",
+                name=role,
+                type=ProviderType.llamacpp,
+                url=f"http://{role}:8080",
+                api_key="",
+                active=True,
+            )
             for role in ("developer", "architect", "tester", "security", "reviewer")
         ]
 
@@ -650,8 +656,13 @@ class TestPerRoleModelConfig:
 
         cfg_data = {
             "providers": [
-                {"id": "openrouter", "name": "OpenRouter", "type": "openai_compat",
-                 "url": "https://openrouter.ai/api", "active": True}
+                {
+                    "id": "openrouter",
+                    "name": "OpenRouter",
+                    "type": "openai_compat",
+                    "url": "https://openrouter.ai/api",
+                    "active": True,
+                }
             ],
             "model": {"provider_id": "openrouter", "name": "default-model"},
             "review": {
@@ -694,8 +705,12 @@ class TestPerRoleModelConfig:
 
         providers = [
             Provider(
-                id="arch-p", name="Arch Provider", type=ProviderType.llamacpp,
-                url="http://arch:8080", api_key="", active=True,
+                id="arch-p",
+                name="Arch Provider",
+                type=ProviderType.llamacpp,
+                url="http://arch:8080",
+                api_key="",
+                active=True,
             )
         ]
         role_models = RoleModelConfig(
@@ -748,8 +763,14 @@ class TestPerRoleModelConfig:
             # NO per_role_models — backward compat
         )
 
-        ctx = MRContext(project_context="", task_context="", dynamic_context="",
-                        security_baseline="", diff="diff", arch_decisions="")
+        ctx = MRContext(
+            project_context="",
+            task_context="",
+            dynamic_context="",
+            security_baseline="",
+            diff="diff",
+            arch_decisions="",
+        )
         await pm.run(ctx)
 
         # All calls came from the same global llm instance

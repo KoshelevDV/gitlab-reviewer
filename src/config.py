@@ -49,6 +49,7 @@ class Provider(BaseModel):
             raise ValueError(f"Provider URL must use http or https scheme, got: {parsed.scheme!r}")
         return v
 
+
 class ModelConfig(BaseModel):
     provider_id: str = ""
     name: str = ""

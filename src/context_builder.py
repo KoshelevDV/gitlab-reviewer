@@ -273,10 +273,7 @@ async def get_task_context(
             logger.debug(
                 "Linked issue #%d found for project=%s MR!%d", issue_iid, project_id, mr_iid
             )
-            return (
-                f"## Task: Issue #{issue_iid} — {issue_title}\n\n"
-                f"{issue_description}"
-            )
+            return f"## Task: Issue #{issue_iid} — {issue_title}\n\n{issue_description}"
         except Exception as exc:  # noqa: BLE001
             logger.warning(
                 "Failed to fetch linked issue #%d for project=%s MR!%d: %s",

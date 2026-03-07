@@ -50,9 +50,7 @@ async def get_rules() -> JSONResponse:
     try:
         config = load_rules(str(p))
     except ValueError as exc:
-        return JSONResponse(
-            {"error": str(exc), "raw_yaml": raw, "count": 0}, status_code=422
-        )
+        return JSONResponse({"error": str(exc), "raw_yaml": raw, "count": 0}, status_code=422)
 
     rules_json = []
     for rule in config.rules:
@@ -65,9 +63,7 @@ async def get_rules() -> JSONResponse:
                     "if_lines_changed_gt": rule.condition.if_lines_changed_gt,
                     "if_target_branch": rule.condition.if_target_branch,
                 },
-                "actions": [
-                    {"type": a.type.value, "value": a.value} for a in rule.actions
-                ],
+                "actions": [{"type": a.type.value, "value": a.value} for a in rule.actions],
                 "stop": rule.stop,
             }
         )
@@ -167,9 +163,7 @@ async def validate_rules_post(request: Request) -> JSONResponse:
 def load_rules_from_text(yaml_text: str):  # type: ignore[return]
     """Parse rules from a YAML string. Raises ValueError on invalid input."""
     # Write to a temp file so load_rules can reuse the existing file-based logic
-    with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".yml", delete=False, encoding="utf-8"
-    ) as f:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yml", delete=False, encoding="utf-8") as f:
         f.write(yaml_text)
         tmp_path = f.name
 

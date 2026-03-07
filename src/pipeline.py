@@ -23,8 +23,8 @@ from .llm_client import LLMClient
 
 # Single-pass slot replacement — prevents injected content from expanding other slots
 _SLOTS_RE = re.compile(
-    r'\[(?:PROJECT_CONTEXT|TASK_CONTEXT|DYNAMIC_CONTEXT|DIFF|'
-    r'ARCH_DECISIONS|SECURITY_BASELINE|PREVIOUS_REVIEWS|FOCUS_AREAS)\]'
+    r"\[(?:PROJECT_CONTEXT|TASK_CONTEXT|DYNAMIC_CONTEXT|DIFF|"
+    r"ARCH_DECISIONS|SECURITY_BASELINE|PREVIOUS_REVIEWS|FOCUS_AREAS)\]"
 )
 
 logger = logging.getLogger(__name__)
@@ -317,14 +317,14 @@ class PipelineManager:
           [FOCUS_AREAS]       → (reserved, empty by default)
         """
         slot_values: dict[str, str] = {
-            "[PROJECT_CONTEXT]":   ctx.project_context   or "(no project context available)",
-            "[TASK_CONTEXT]":      ctx.task_context       or "(no task context available)",
-            "[DYNAMIC_CONTEXT]":   ctx.dynamic_context    or "(no dynamic context available)",
-            "[DIFF]":              ctx.diff               or "(no diff)",
-            "[ARCH_DECISIONS]":    ctx.arch_decisions     or ctx.project_context or "",
-            "[SECURITY_BASELINE]": ctx.security_baseline  or "",
-            "[PREVIOUS_REVIEWS]":  previous_reviews       or "",
-            "[FOCUS_AREAS]":       "",
+            "[PROJECT_CONTEXT]": ctx.project_context or "(no project context available)",
+            "[TASK_CONTEXT]": ctx.task_context or "(no task context available)",
+            "[DYNAMIC_CONTEXT]": ctx.dynamic_context or "(no dynamic context available)",
+            "[DIFF]": ctx.diff or "(no diff)",
+            "[ARCH_DECISIONS]": ctx.arch_decisions or ctx.project_context or "",
+            "[SECURITY_BASELINE]": ctx.security_baseline or "",
+            "[PREVIOUS_REVIEWS]": previous_reviews or "",
+            "[FOCUS_AREAS]": "",
         }
         return _SLOTS_RE.sub(lambda m: slot_values.get(m.group(0), m.group(0)), template)
 
