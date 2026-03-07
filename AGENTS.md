@@ -54,6 +54,10 @@ src/
     reviews.py        — /api/v1/reviews (list, stats, recent, get by id)
     queue_api.py      — /api/v1/queue status + drain
     logs_api.py       — GET /api/v1/logs + WebSocket /ws/logs
+    rules_api.py      — GET/POST/DELETE /api/v1/rules, GET /api/v1/rules/validate
+  rules.py            — Automation Rules engine (FT-6): ActionType, RuleCondition, Rule,
+                        RulesConfig, MRContext, RulesEngine, load_rules()
+                        Rules evaluated at enqueue time (before diff fetch)
   main.py             — App factory, DI wiring, uvicorn entrypoint
 
 prompts/
@@ -259,6 +263,10 @@ After v0.2: open `http://server:8000/ui/` to configure everything.
 - **Language detection**: threshold is 40% of files — avoids mislabelling polyglot repos
 - **PromptEngine init**: accepts `Path | str` — internally converts to Path; old code broke when `str` was passed
 - **Route ordering in FastAPI**: literal paths (`/stats/weekly`, `/export.csv`) MUST be registered BEFORE parameterized (`/{review_id}`) — otherwise FastAPI captures them as path params
+- **Automation Rules (FT-6)**: `if_files_match` and `if_lines_changed_gt` require diff data not present in webhook payload → conditions with empty `changed_files`/`lines_changed=0` evaluate to False (not True). This is intentional — only `if_author_in` and `if_target_branch` work fully at enqueue time without extra API calls. When skipped, a `DEBUG`-level log is emitted (search for "skipped — changed_files not available").
+- **ActionType warning log**: `webhook.py` iterates `engine.evaluate(ctx)` actions and logs `WARNING` for any action type other than `SKIP_REVIEW` (e.g. `add_label`, `assign_reviewer`, `force_full_review`, `notify_webhook`). This is deliberate dead-code guard — implement the action handler, then remove the warning for that type.
+- **rules.yml location**: always sibling of `config.yml`; path set via `set_rules_path()` in `main.py`. Rules engine re-reads the file on every webhook call (no caching) — hot-reload friendly
+- **rules_api.py**: `_rules_path()` reads the module-level variable from `webhook.py` at call time — do not cache it at import time
 - **Inline comment placement**: GitLab Discussions API requires `old_line` for context lines (unchanged lines in the diff) — passing only `new_line` causes comment to be silently misplaced. Use `_parse_diff_line_map()` to determine whether to include `old_line`
 - **Comment-snap**: if LLM references a comment-only line (e.g. `# SQL injection`), `_is_comment_content()` + `_build_diff_content_map()` advance the target to the next non-comment line. Regex covers `#`, `//`, `/*`, `*`, `<!--`, `--`
 - **Annotated diff format**: diff sent to LLM uses `+NNN | code` format (from `_annotate_diff_with_line_numbers()`). LLM must use the `NNN` number directly — do NOT parse old `@@` hunk offsets. Update `inline_format.md` if the format changes

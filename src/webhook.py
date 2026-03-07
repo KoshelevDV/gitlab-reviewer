@@ -18,17 +18,24 @@ from fastapi.responses import JSONResponse
 
 from .config import get_config
 from .queue_manager import QueueManager, ReviewJob
+from .rules import ActionType, MRContext, RulesEngine, load_rules
 from .slash_commands import execute_slash_command, parse_slash_command
 
 logger = logging.getLogger(__name__)
 
 _REVIEWED_ACTIONS = {"open", "update", "reopen"}
 _queue: QueueManager | None = None
+_rules_path: str | None = None
 
 
 def set_queue_manager(q: QueueManager) -> None:
     global _queue
     _queue = q
+
+
+def set_rules_path(path: str | None) -> None:
+    global _rules_path
+    _rules_path = path
 
 
 def make_webhook_router() -> APIRouter:
@@ -83,7 +90,36 @@ def make_webhook_router() -> APIRouter:
             raise HTTPException(status_code=400, detail="Invalid or missing mr_iid")
         mr_iid: int = raw_mr_iid
 
-        # 4. Enqueue
+        # 4. Evaluate automation rules (before enqueue)
+        try:
+            rules_config = load_rules(_rules_path)
+            engine = RulesEngine(rules_config)
+            ctx = MRContext(
+                project_id=project_id,
+                mr_iid=mr_iid,
+                author=body.get("user", {}).get("username", ""),
+                target_branch=attrs.get("target_branch", ""),
+                # changed_files and lines_changed require diff fetch — not available here
+            )
+            actions = engine.evaluate(ctx)
+            for action in actions:
+                if action.type == ActionType.SKIP_REVIEW:
+                    logger.info(
+                        "MR skipped by automation rule: project=%s MR!%d", project_id, mr_iid
+                    )
+                    return JSONResponse(
+                        {"status": "skipped_by_rule", "project_id": project_id, "mr_iid": mr_iid}
+                    )
+                else:
+                    logger.warning(
+                        "Automation rule action '%s' is configured but not yet implemented;"
+                        " skipping",
+                        action.type.value,
+                    )
+        except Exception:
+            logger.exception("Automation rules evaluation failed — continuing without rules")
+
+        # 5. Enqueue
         if _queue is None:
             raise HTTPException(status_code=503, detail="Review queue not initialised")
 
