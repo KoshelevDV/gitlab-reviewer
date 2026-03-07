@@ -265,6 +265,7 @@ After v0.2: open `http://server:8000/ui/` to configure everything.
 - **Route ordering in FastAPI**: literal paths (`/stats/weekly`, `/export.csv`) MUST be registered BEFORE parameterized (`/{review_id}`) — otherwise FastAPI captures them as path params
 - **Automation Rules (FT-6)**: `if_files_match` and `if_lines_changed_gt` require diff data not present in webhook payload → conditions with empty `changed_files`/`lines_changed=0` evaluate to False (not True). This is intentional — only `if_author_in` and `if_target_branch` work fully at enqueue time without extra API calls. When skipped, a `DEBUG`-level log is emitted (search for "skipped — changed_files not available").
 - **ActionType warning log**: `webhook.py` iterates `engine.evaluate(ctx)` actions and logs `WARNING` for any action type other than `SKIP_REVIEW` (e.g. `add_label`, `assign_reviewer`, `force_full_review`, `notify_webhook`). This is deliberate dead-code guard — implement the action handler, then remove the warning for that type.
+- **Content-Length pre-check pattern**: In `rules_api.py` (and `webhook.py`), always check `request.headers.get("content-length")` BEFORE `await request.body()`. This avoids reading oversized bodies into memory. Keep the post-read `len(body_bytes) > MAX` check as a fallback for chunked Transfer-Encoding (no Content-Length header). Pattern: pre-check raises HTTP 413; post-read check also raises 413.
 - **rules.yml location**: always sibling of `config.yml`; path set via `set_rules_path()` in `main.py`. Rules engine re-reads the file on every webhook call (no caching) — hot-reload friendly
 - **rules_api.py**: `_rules_path()` reads the module-level variable from `webhook.py` at call time — do not cache it at import time
 - **Inline comment placement**: GitLab Discussions API requires `old_line` for context lines (unchanged lines in the diff) — passing only `new_line` causes comment to be silently misplaced. Use `_parse_diff_line_map()` to determine whether to include `old_line`
@@ -322,3 +323,4 @@ After v0.2: open `http://server:8000/ui/` to configure everything.
 | URL validator for provider.url (http/https only) | v0.15 | ✅ Done |
 | timeout: int = 300 in ModelConfig (configurable) | v0.15 | ✅ Done |
 | chore: ruff lint fix — 52 errors fixed (#11, #8, #10) | chore | ✅ Done |
+| Content-Length pre-check in rules_api.py + body limit tests (#14) | chore | ✅ Done |
